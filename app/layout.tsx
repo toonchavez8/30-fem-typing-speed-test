@@ -18,7 +18,7 @@ export default function RootLayout({
 }>) {
 	return (
 		<html lang="en">
-			<body className="font-bold min-h-screen bg-zinc-50 relative group overflow-hidden">
+			<body className="font-bold min-h-screen relative group overflow-hidden bg-FemNeutral-900  text-FemNeutral-000">
 				<Header />
 				{children}
 				<Footer />

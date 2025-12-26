@@ -25,23 +25,21 @@
 }
 
 :root {
-	--background: #ffffff;
-	--foreground: #121212;
 	--sora: "Sora";
 }
 
 @theme {
-	--color-FemNeutral-900: var(--foreground);
+	--color-FemNeutral-900: #121212;
 	--color-FemNeutral-800: #262626;
 	--color-FemNeutral-500: #717178;
 	--color-FemNeutral-400: #949497;
-	--color-FemNeutral-000: var(--background);
+	--color-FemNeutral-200: #ededed;
+	--color-FemNeutral-000: #ffffff;
 	--color-FemBlue-600: #177dff;
 	--color-FemBlue-400: #4ca6ff;
 	--color-FemRed-500: #d64d5b;
 	--color-FemGreen-500: #4dd67b;
 	--color-FemYellow-400: #f4dc73;
-	--color-foreground: var(--foreground);
 	--font-sans: var(--sora);
 }
 
@@ -53,8 +51,6 @@
 }
 
 body {
-	background: var(--background);
-	color: var(--foreground);
 	display: grid;
 	grid-template-rows: auto 1fr auto;
 }
