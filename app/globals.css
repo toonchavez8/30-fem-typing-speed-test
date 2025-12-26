@@ -1,15 +1,48 @@
 @import "tailwindcss";
 
-:root {
-	--background: #ffffff;
-	--foreground: #171717;
+@font-face {
+	font-family: "Sora";
+	src: url("/fonts/Sora/static/Sora-Regular.ttf") format("truetype");
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
 }
 
-@theme inline {
-	--color-background: var(--background);
+@font-face {
+	font-family: "Sora";
+	src: url("/fonts/Sora/static/Sora-SemiBold.ttf") format("truetype");
+	font-weight: 600;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Sora";
+	src: url("/fonts/Sora/static/Sora-Bold.ttf") format("truetype");
+	font-weight: 700;
+	font-style: normal;
+	font-display: swap;
+}
+
+:root {
+	--background: #ffffff;
+	--foreground: #121212;
+	--sora: "Sora";
+}
+
+@theme {
+	--color-FemNeutral-900: var(--foreground);
+	--color-FemNeutral-800: #262626;
+	--color-FemNeutral-500: #717178;
+	--color-FemNeutral-400: #949497;
+	--color-FemNeutral-000: var(--background);
+	--color-FemBlue-600: #177dff;
+	--color-FemBlue-400: #4ca6ff;
+	--color-FemRed-500: #d64d5b;
+	--color-FemGreen-500: #4dd67b;
+	--color-FemYellow-400: #f4dc73;
 	--color-foreground: var(--foreground);
-	--font-sans: var(--font-geist-sans);
-	--font-mono: var(--font-geist-mono);
+	--font-sans: var(--sora);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,5 +55,4 @@
 body {
 	background: var(--background);
 	color: var(--foreground);
-	font-family: Arial, Helvetica, sans-serif;
 }
