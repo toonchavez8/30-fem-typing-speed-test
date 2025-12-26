@@ -1,2 +1,2 @@
-export * from './useTimer';
-export * from './useTypingTest';
+export * from "./useTimer";
+export * from "./useTypingTest";
