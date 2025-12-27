@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 
 type Mode = "timed" | "passage";
 type Difficulty = "easy" | "medium" | "hard";
@@ -45,18 +45,21 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 	const [accuracy, setAccuracy] = useState<number>(defaultState.accuracy);
 	const [time, setTime] = useState<string>(defaultState.time);
 
-	const value: GameState = {
-		difficulty,
-		mode,
-		wpm,
-		accuracy,
-		time,
-		setDifficulty: (d) => setDifficulty(d),
-		setMode: (m) => setMode(m),
-		setWpm: (v) => setWpm(v),
-		setAccuracy: (v) => setAccuracy(v),
-		setTime: (t) => setTime(t),
-	};
+	const value: GameState = useMemo(
+		() => ({
+			difficulty,
+			mode,
+			wpm,
+			accuracy,
+			time,
+			setDifficulty: (d) => setDifficulty(d),
+			setMode: (m) => setMode(m),
+			setWpm: (v) => setWpm(v),
+			setAccuracy: (v) => setAccuracy(v),
+			setTime: (t) => setTime(t),
+		}),
+		[difficulty, mode, wpm, accuracy, time],
+	);
 
 	return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 };
