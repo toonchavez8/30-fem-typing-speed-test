@@ -36,3 +36,10 @@ export interface TypingMetrics {
 export interface TypingResult extends TypingMetrics {
 	durationMs: number;
 }
+
+
+export interface CharacterState {
+	character: string;
+	state:"untyped" | "correct" | "incorrect";
+	index: number;
+}

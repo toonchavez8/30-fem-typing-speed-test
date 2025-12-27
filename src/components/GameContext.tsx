@@ -1,9 +1,28 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
-
-type Mode = "timed" | "passage";
-type Difficulty = "easy" | "medium" | "hard";
+import { useTimer } from "@/lib/hooks";
+import {
+	CharacterState,
+	Difficulty,
+	Mode,
+	Passage,
+	TypingTestStatus,
+} from "@/lib/types";
+import {
+	calculateAccuracy,
+	calculateWPM,
+	formatTime,
+} from "@/lib/utils/metrics-calculation";
+import { validateTypedInput } from "@/lib/utils/typing-validation";
+import test from "node:test";
+import {
+	createContext,
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 
 interface GameState {
 	difficulty: Difficulty;
@@ -11,11 +30,22 @@ interface GameState {
 	wpm: number;
 	accuracy: number;
 	time: string;
+
+	passage: Passage | null;
+	typedValue: string;
+	characterStates: CharacterState[];
+	testStatus: TypingTestStatus;
+	cursorIndex: number;
+
+	// setters
 	setDifficulty: (d: Difficulty) => void;
 	setMode: (m: Mode) => void;
-	setWpm: (v: number) => void;
-	setAccuracy: (v: number) => void;
-	setTime: (t: string) => void;
+
+	// typeing test related setters
+	startTest: () => void;
+	resetTest: () => void;
+	handleTyping: (input: string) => void;
+	fetchNewPassage: () => Promise<void>;
 }
 
 const defaultState: GameState = {
@@ -24,12 +54,19 @@ const defaultState: GameState = {
 	wpm: 0,
 	accuracy: 100,
 	time: "0:60",
+	passage: null,
+	typedValue: "",
+	characterStates: [],
+	testStatus: "idle",
+	cursorIndex: 0,
+	// typing test related methods - placeholders
 	// placeholders
 	setDifficulty: () => {},
 	setMode: () => {},
-	setWpm: () => {},
-	setAccuracy: () => {},
-	setTime: () => {},
+	startTest: () => {},
+	resetTest: () => {},
+	handleTyping: () => {},
+	fetchNewPassage: async () => {},
 };
 
 const GameContext = createContext<GameState>(defaultState);
@@ -37,29 +74,95 @@ const GameContext = createContext<GameState>(defaultState);
 export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 	children,
 }) => {
-	const [difficulty, setDifficulty] = useState<GameState["difficulty"]>(
+	const [difficulty, setDifficulty] = useState<Difficulty>(
 		defaultState.difficulty,
 	);
-	const [mode, setMode] = useState<GameState["mode"]>(defaultState.mode);
-	const [wpm, setWpm] = useState<number>(defaultState.wpm);
-	const [accuracy, setAccuracy] = useState<number>(defaultState.accuracy);
-	const [time, setTime] = useState<string>(defaultState.time);
+	const [mode, setMode] = useState<Mode>(defaultState.mode);
+	const [passage, setPassage] = useState<Passage | null>(null);
+	const [typedValue, setTypedValue] = useState<string>("");
+	const [testStatus, setTestStatus] = useState<TypingTestStatus>("idle");
 
-	const value: GameState = useMemo(
-		() => ({
-			difficulty,
-			mode,
-			wpm,
-			accuracy,
-			time,
-			setDifficulty: (d) => setDifficulty(d),
-			setMode: (m) => setMode(m),
-			setWpm: (v) => setWpm(v),
-			setAccuracy: (v) => setAccuracy(v),
-			setTime: (t) => setTime(t),
-		}),
-		[difficulty, mode, wpm, accuracy, time],
-	);
+	// timer integration
+
+	const timer = useTimer({
+		duration: mode === "timed" ? 60000 : null,
+		autoStart: false,
+		onComplete: () => {
+			setTestStatus("completed");
+		},
+	});
+
+	// Character Validation
+	const characterStates = useMemo(() => {
+		if (!passage) return [];
+		return validateTypedInput(typedValue, passage.text);
+	}, [typedValue, passage]);
+
+	const cursorIndex = typedValue.length;
+
+	// calculate metrics
+	const { correctCount, incorrectCount } = useMemo(() => {
+		const correct = characterStates.filter(
+			(status) => status.state === "correct",
+		).length;
+		const incorrect = characterStates.filter(
+			(status) => status.state === "incorrect",
+		).length;
+		return { correctCount: correct, incorrectCount: incorrect };
+	}, [characterStates]);
+
+	// calculate words per minute (wpm)
+	const wpm = useMemo(() => {
+		return calculateWPM(correctCount, timer.elapsedMs);
+	}, [correctCount, timer.elapsedMs]);
+
+	//caluclate word accuracy rate
+	const accuracy = useMemo(() => {
+		return calculateAccuracy(correctCount, incorrectCount);
+	}, [correctCount, incorrectCount]);
+
+	const time = useMemo(() => {
+		if (mode === "timed" && timer.remainingMs !== null) {
+			return formatTime(timer.remainingMs);
+		}
+		return formatTime(timer.elapsedMs);
+	}, [mode, timer.elapsedMs, timer.remainingMs]);
+
+	// fetch passage when difficulty changes
+	const fetchNewPassage = useCallback(async () => {
+		try {
+			const res = await fetch(
+				`/api/passages/action?difficulty=${difficulty.toLowerCase()}`,
+				{ cache: "no-store" },
+			);
+			if (!res.ok) throw new Error("Failed to fetch passage");
+			const data: Passage = await res.json();
+			setPassage(data);
+			setTestStatus("ready");
+		} catch (error) {
+			console.error("Failed to fetch passage:", error);
+		}
+	}, [difficulty]);
+
+	useEffect(() => {
+		fetchNewPassage();
+	}, [fetchNewPassage]);
+
+	//typing handlers
+
+	const startTest = useCallback(() => {
+		if (testStatus !== "ready") return;
+		setTestStatus("running");
+		timer.start();
+	}, [testStatus, timer]);
+
+	const resetTest = useCallback(() => {
+		setTypedValue("");
+		setTestStatus("ready");
+		timer.reset();
+	}, [timer]);
+
+	const value: GameState = useMemo(() => ({}), []);
 
 	return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 };

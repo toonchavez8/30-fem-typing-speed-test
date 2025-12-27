@@ -33,20 +33,23 @@ const Textcontainter: React.FC<TextcontainterProps> = ({ difficulty }) => {
 			).toLowerCase();
 
 			// Try the action endpoint first (server action wrapper)
-			const actionUrl = `/api/passages/action?difficulty=${encodeURIComponent(diff)}`;
+			const actionUrl = `/api/passages/action?difficulty=${encodeURIComponent(
+				diff,
+			)}`;
 			const restUrl = `/api/passages?difficulty=${encodeURIComponent(diff)}`;
 
 			try {
 				const data = await fetchJson<Passage>(actionUrl);
 				if (mounted) setPassage(data);
-			} catch (err) {
+			} catch (error_) {
+				console.warn("Action endpoint failed, trying REST API:", error_);
 				// fallback to REST API
 				try {
 					const data = await fetchJson<Passage>(restUrl);
 					if (mounted) setPassage(data);
-				} catch (err2) {
+				} catch (error_) {
 					if (mounted)
-						setError((err2 as Error).message || "Failed to load passage");
+						setError((error_ as Error).message || "Failed to load passage");
 				}
 			} finally {
 				if (mounted) setLoading(false);
@@ -60,24 +63,40 @@ const Textcontainter: React.FC<TextcontainterProps> = ({ difficulty }) => {
 		};
 	}, [difficulty, game.difficulty]);
 
+	if (loading) {
+		return (
+			<article className="prose max-w-none text-gray-200">
+				<p className="text-sm text-gray-400">Loading passage…</p>
+			</article>
+		);
+	}
+
+	if (error) {
+		return (
+			<article className="prose max-w-none text-gray-200">
+				<p className="text-sm text-red-400">Error: {error}</p>
+			</article>
+		);
+	}
+
+	if (!passage) {
+		return (
+			<article className="prose max-w-none text-gray-200">
+				<p className="text-sm text-gray-400">No passage available.</p>
+			</article>
+		);
+	}
+
 	return (
 		<article className="prose max-w-none text-gray-200">
-			{loading ? (
-				<p className="text-sm text-gray-400">Loading passage…</p>
-			) : error ? (
-				<p className="text-sm text-red-400">Error: {error}</p>
-			) : passage ? (
-				<section aria-labelledby="passage-title">
-					<h3 id="passage-title" className="sr-only">
-						Passage
-					</h3>
-					<p className="leading-relaxed font-medium text-2xl xs:text-3xl md:text-[40px]">
-						{passage.text}
-					</p>
-				</section>
-			) : (
-				<p className="text-sm text-gray-400">No passage available.</p>
-			)}
+			<section aria-labelledby="passage-title">
+				<h3 id="passage-title" className="sr-only">
+					Passage
+				</h3>
+				<p className="leading-relaxed font-medium text-2xl xs:text-3xl md:text-[40px]">
+					{passage.text}
+				</p>
+			</section>
 		</article>
 	);
 };
