@@ -19,16 +19,16 @@ const CharacterSpan: React.FC<CharacterSpanProps> = ({
 
 	// State-based color
 	if (state === "correct") {
-		className += "text-emerald-500 ";
+		className += "text-FemGreen-500 ";
 	} else if (state === "incorrect") {
-		className += "text-red-400 ";
+		className += "text-FemRed-500  ";
 	} else {
 		className += "text-gray-400 ";
 	}
 
 	// Cursor indicator
 	if (isCursor) {
-		className += "border-b-2 border-FemBlue-400 ";
+		className += "rounded bg-FemNeutral-000/20 animate-pulse ";
 	}
 
 	// Special character handling

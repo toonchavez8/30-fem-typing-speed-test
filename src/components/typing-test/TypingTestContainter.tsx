@@ -10,7 +10,7 @@ const TypingTestContainer: React.FC = () => {
 	// Loading state
 	if (!game.passage) {
 		return (
-			<div className="w-full max-w-4xl mx-auto mt-8">
+			<div className="w-full  mx-auto mt-8 text-pretty">
 				<p className="text-gray-400 text-center">Loading passage...</p>
 			</div>
 		);
@@ -19,7 +19,7 @@ const TypingTestContainer: React.FC = () => {
 	// Idle/Ready state - show instructions
 	if (game.testStatus === "idle" || game.testStatus === "ready") {
 		return (
-			<div className="w-full max-w-4xl mx-auto mt-8">
+			<div className="w-full  mx-auto mt-8 text-pretty">
 				<div className="relative">
 					<PassageDisplay />
 					<TypingInput />
@@ -36,7 +36,7 @@ const TypingTestContainer: React.FC = () => {
 	// Running state
 	if (game.testStatus === "running") {
 		return (
-			<div className="w-full max-w-4xl mx-auto mt-8">
+			<div className="w-full  mx-auto mt-8 text-pretty">
 				<div className="relative">
 					<PassageDisplay />
 					<TypingInput />
@@ -48,7 +48,7 @@ const TypingTestContainer: React.FC = () => {
 	// Completed state
 	if (game.testStatus === "completed") {
 		return (
-			<div className="w-full max-w-4xl mx-auto mt-8">
+			<div className="w-full  mx-auto mt-8 text-pretty ">
 				<PassageDisplay />
 				<div className="mt-8 p-6 bg-gray-800 rounded-lg border border-gray-700">
 					<h2 className="text-2xl font-bold text-FemBlue-400 mb-4">

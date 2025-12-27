@@ -34,7 +34,7 @@ const TypingInput: React.FC = () => {
 			value={game.typedValue}
 			onChange={handleChange}
 			onBlur={handleBlur}
-			className="absolute inset-0 w-full h-full px-6 py-6 bg-transparent text-2xl md:text-3xl leading-relaxed font-medium text-transparent caret-FemBlue-400 focus:outline-none cursor-text"
+			className="  absolute inset-0 w-full h-full px-6 py-6 bg-transparent text-2xl md:text-3xl leading-relaxed font-medium text-transparent  focus:outline-none cursor-text"
 			disabled={game.testStatus === "idle"}
 			aria-label="Typing input"
 			autoComplete="off"

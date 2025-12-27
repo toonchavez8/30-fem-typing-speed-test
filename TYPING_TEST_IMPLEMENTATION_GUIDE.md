@@ -1,75 +1,1416 @@
-# Typing Test Implementation Guide
+# Typing Test Implementation Guide - COMPREHENSIVE UPDATE
 
 **Project:** Typing Speed Test Application  
 **Date:** December 27, 2025  
-**Purpose:** Refactor and implement interactive typing test with real-time WPM/accuracy tracking
+**Updated:** December 27, 2025 - Enhanced Features + Next.js Architecture Review  
+**Purpose:** Complete interactive typing test with advanced features, statistics tracking, and Next.js 15+ best practices
+
+---
+
+## 🚀 UPDATES IN THIS VERSION
+
+### ✅ Features Added:
+1. **Backspace Support** - Users can correct mistakes
+2. **Error Highlighting** - Visual underline for incorrect characters  
+3. **Keyboard Shortcuts** - Ctrl+R (reset), Ctrl+N (new passage), Escape (cancel)
+4. **Statistics History** - LocalStorage persistence with best scores
+
+### ✅ Architecture Review:
+- Next.js App Router patterns validated
+- Server/Client Component boundaries optimized
+- Context Provider placement corrected
+- Type safety improvements
+- Performance optimizations
 
 ---
 
 ## Table of Contents
 
-1. [Current Project Structure (BEFORE)](#current-project-structure-before)
-2. [Desired Project Structure (AFTER)](#desired-project-structure-after)
-3. [Responsibility Mapping](#responsibility-mapping)
-4. [Component Code Examples](#component-code-examples)
-5. [Implementation Checklist](#implementation-checklist)
+1. [Architecture Review & Current State](#architecture-review--current-state)
+2. [Current vs Required Project Structure](#current-vs-required-project-structure)
+3. [Enhanced Features Implementation](#enhanced-features-implementation)
+4. [Updated Component Code Examples](#updated-component-code-examples)
+5. [Statistics Persistence System](#statistics-persistence-system)
+6. [Implementation Checklist](#implementation-checklist)
+7. [Migration Guide](#migration-guide)
 
 ---
 
-## Current Project Structure (BEFORE)
+## Architecture Review & Current State
+
+### ✅ VERIFIED: Next.js Best Practices Analysis
+
+Based on [Next.js App Router Documentation](https://nextjs.org/docs/app/building-your-application/rendering/composition-patterns):
+
+#### Current Implementation Status:
+
+**✅ CORRECT:**
+1. **Context Provider Pattern** - `GameContext.tsx` properly uses `"use client"` directive
+2. **Client Components** - All interactive components correctly marked with `"use client"`  
+3. **Component Composition** - Server Components passing data to Client Components via props
+4. **Provider Placement** - Context provider wrapped correctly in page component
+
+**⚠️ IMPROVEMENTS NEEDED:**
+1. **LocalStorage Usage** - Need client-side only wrapper (browser API)
+2. **Keyboard Events** - Already client-side, but need better event cleanup
+3. **Type Safety** - Some typing improvements needed
+4. **Bundle Size** - Can optimize by splitting GameContext logic
+
+#### Current File States:
+
+```
+✅ IMPLEMENTED: Core typing test functionality
+✅ IMPLEMENTED: Character validation and styling  
+✅ IMPLEMENTED: Timer integration
+✅ IMPLEMENTED: WPM/Accuracy calculation
+✅ IMPLEMENTED: Overlay input (recent fix)
+
+❌ MISSING: Backspace/correction support
+❌ MISSING: Error highlighting (underline)
+❌ MISSING: Keyboard shortcuts
+❌ MISSING: Statistics persistence
+❌ MISSING: Historical data tracking
+```
+
+---
+
+## Current vs Required Project Structure
+
+### CURRENT STRUCTURE (What You Have):
+
+### CURRENT STRUCTURE (What You Have):
 
 ```
 src/
 ├─ app/
-│  ├─ page.tsx                    // Main page - renders GameProvider with StatsContainer & TextContainer
-│  ├─ layout.tsx                  // Root layout with Header/Footer
-│  ├─ globals.css                 // Global styles
+│  ├─ page.tsx                    // ✅ Main page with GameProvider + components
+│  ├─ layout.tsx                  // ✅ Root layout with Header/Footer
+│  ├─ globals.css                 // ✅ Global styles
 │  └─ api/
 │     └─ passages/
-│        ├─ route.ts              // REST API endpoint for fetching passages
+│        ├─ route.ts              // ✅ REST API endpoint
 │        └─ action/
-│           └─ route.ts           // Server action wrapper for passages
+│           └─ route.ts           // ✅ Server action wrapper
 │
 ├─ components/
-│  ├─ GameContext.tsx             // Shared state (difficulty, mode, wpm, accuracy, time)
-│  ├─ textcontainter.tsx          // Fetches and displays static passage text
-│  ├─ statsContainter.tsx         // Displays WPM, accuracy, time, difficulty/mode toggles
-│  ├─ header.tsx                  // Site header
-│  ├─ footer.tsx                  // Site footer
-│  └─ README.md                   // Component documentation
+│  ├─ GameContext.tsx             // ✅ IMPLEMENTED - Manages typing state
+│  ├─ typing-test/
+│  │  ├─ TypingTestContainter.tsx // ✅ IMPLEMENTED - Main container
+│  │  ├─ TypingInput.tsx          // ✅ IMPLEMENTED - Overlay input (recently fixed)
+│  │  ├─ PassageDisplay.tsx       // ✅ IMPLEMENTED - Character display
+│  │  └─ CharacterSpan.tsx        // ✅ IMPLEMENTED - Individual character
+│  │
+│  ├─ textcontainter.tsx          // ⚠️ DEPRECATED - Replace with TypingTestContainer
+│  ├─ statsContainter.tsx         // ✅ WORKING - Displays metrics
+│  ├─ header.tsx                  // ✅ WORKING
+│  ├─ footer.tsx                  // ✅ WORKING
+│  └─ README.md
 │
 ├─ lib/
-│  ├─ types.ts                    // TypeScript types (Passage, TypingMetrics, TimerSnapshot, etc.)
-│  ├─ passages.ts                 // Passage utility functions (getRandomPassage)
+│  ├─ types.ts                    // ✅ IMPLEMENTED - All typing types defined
+│  ├─ passages.ts                 // ✅ WORKING
+│  ├─ utils/
+│  │  ├─ typing-validation.ts    // ✅ IMPLEMENTED - Character validation
+│  │  └─ metrics-calculation.ts  // ✅ IMPLEMENTED - WPM/accuracy calculations
+│  │
 │  └─ hooks/
-│     ├─ index.ts                 // Hook exports
-│     ├─ useTimer.ts              // Timer hook with start/pause/reset (195 lines)
-│     └─ useTypingTest.ts         // Typing test logic hook (198 lines)
+│     ├─ index.ts                 // ✅ WORKING - Hook exports
+│     ├─ useTimer.ts              // ✅ WORKING - Timer logic
+│     └─ useTypingTest.ts         // ✅ EXISTS but NOT INTEGRATED yet
 │
 └─ data/
-   └─ data.json                   // Passage data organized by difficulty
+   └─ data.json                   // ✅ WORKING - Passage data
 ```
 
-### What Currently Works
+### REQUIRED ADDITIONS:
 
-- ✅ Fetches passages based on difficulty
-- ✅ Displays static text passages
-- ✅ Shows placeholder WPM/accuracy/time in stats
-- ✅ Difficulty and mode toggles update GameContext
-- ✅ Has existing `useTypingTest` and `useTimer` hooks (not currently integrated)
-
-### What's Missing
-
-- ❌ No input field for typing
-- ❌ No real-time character validation
-- ❌ No dynamic styling for correct/incorrect characters
-- ❌ WPM/accuracy not calculated from actual typing
-- ❌ Timer not integrated with typing activity
-- ❌ GameContext not managing typing state
+```
+src/
+├─ lib/
+│  ├─ utils/
+│  │  ├─ storage.ts              // ❌ NEW - LocalStorage wrapper with SSR safety
+│  │  └─ keyboard-shortcuts.ts   // ❌ NEW - Keyboard event handlers
+│  │
+│  └─ hooks/
+│     ├─ useKeyboardShortcuts.ts // ❌ NEW - Hook for keyboard shortcuts
+│     └─ useStatistics.ts        // ❌ NEW - Statistics persistence hook
+│
+└─ types/
+   └─ statistics.ts               // ❌ NEW - Statistics types (or add to lib/types.ts)
+```
 
 ---
 
-## Desired Project Structure (AFTER)
+## Enhanced Features Implementation
+
+### Feature 1: **Backspace Support (CRITICAL FIX)**
+
+#### Problem:
+Current implementation doesn't allow users to backspace and correct mistakes.
+
+#### Solution:
+
+---
+
+#### Solution:
+
+**Changes Required:**
+
+1. **GameContext.tsx** - Update `handleTyping` to allow backspace
+2. **TypingInput.tsx** - No changes needed (already captures backspace)
+3. **typing-validation.ts** - Already handles variable length input
+
+**Code Changes:**
+
+```tsx
+// File: src/components/GameContext.tsx
+// CHANGE: Update handleTyping method
+
+// ❌ OLD CODE (Lines ~175-195):
+const handleTyping = useCallback((value: string) => {
+	if (testStatus === "ready") {
+		setTestStatus("running");
+		timer.start();
+	}
+	
+	if (testStatus !== "running") return;
+	
+	setTypedValue(value); // ← Only allows forward typing
+	
+	if (passage && value.length >= passage.text.length) {
+		setTestStatus("completed");
+		timer.complete();
+	}
+}, [testStatus, passage, timer]);
+
+// ✅ NEW CODE (Replace above with):
+const handleTyping = useCallback((value: string) => {
+	// Auto-start on first keystroke
+	if (testStatus === "ready" && value.length > 0) {
+		setTestStatus("running");
+		timer.start();
+	}
+	
+	// Only allow typing when running
+	if (testStatus !== "running") return;
+	
+	// Prevent typing beyond passage length
+	if (passage && value.length > passage.text.length) {
+		return; // ← Silently ignore extra characters
+	}
+	
+	// ✅ ADDED: Allow backspace (value can be shorter than before)
+	setTypedValue(value);
+	
+	// Check completion
+	if (passage && value.length === passage.text.length && 
+	    characterStates.every(s => s.state === "correct")) {
+		setTestStatus("completed");
+		timer.complete();
+	}
+}, [testStatus, passage, timer, characterStates]);
+```
+
+**Summary:**
+- ✅ Backspace now works automatically (input onChange handles it)
+- ✅ Prevents typing beyond passage length
+- ✅ Only completes test when ALL characters are correct
+- ✅ No validation.ts changes needed (already handles variable lengths)
+
+---
+
+### Feature 2: **Error Highlighting with Underline**
+
+#### Problem:
+Incorrect characters only show red color, but no underline emphasis.
+
+#### Solution:
+
+**Code Changes:**
+
+```tsx
+// File: src/components/typing-test/CharacterSpan.tsx
+// CHANGE: Add underline styling for incorrect characters
+
+// ❌ OLD CODE (Lines ~16-31):
+const CharacterSpan: React.FC<CharacterSpanProps> = ({
+	character,
+	state,
+	isCursor,
+}) => {
+	let className = "inline-block relative ";
+
+	if (state === "correct") {
+		className += "text-emerald-500 ";
+	} else if (state === "incorrect") {
+		className += "text-red-400 "; // ← Only color
+	} else {
+		className += "text-gray-400 ";
+	}
+
+	if (isCursor) {
+		className += "border-b-2 border-FemBlue-400 ";
+	}
+
+	const displayChar = character === " " ? "\u00A0" : character;
+
+	return (
+		<span className={className} data-char={character}>
+			{displayChar}
+		</span>
+	);
+};
+
+// ✅ NEW CODE (Replace above with):
+const CharacterSpan: React.FC<CharacterSpanProps> = ({
+	character,
+	state,
+	isCursor,
+}) => {
+	let className = "inline-block relative ";
+
+	if (state === "correct") {
+		className += "text-emerald-500 ";
+	} else if (state === "incorrect") {
+		// ✅ ADDED: Underline decoration for errors
+		className += "text-red-400 underline decoration-2 decoration-red-400/70 ";
+	} else {
+		className += "text-gray-400 ";
+	}
+
+	if (isCursor) {
+		className += "border-b-2 border-FemBlue-400 ";
+	}
+
+	const displayChar = character === " " ? "\u00A0" : character;
+
+	return (
+		<span className={className} data-char={character}>
+			{displayChar}
+		</span>
+	);
+};
+```
+
+**Tailwind Classes Added:**
+- `underline` - Adds text underline
+- `decoration-2` - Sets underline thickness
+- `decoration-red-400/70` - Sets underline color with 70% opacity
+
+---
+
+### Feature 3: **Keyboard Shortcuts**
+
+#### Problem:
+No keyboard shortcuts for common actions (reset, new passage, cancel).
+
+#### Solution:
+
+**Step 1: Create Keyboard Shortcuts Utility**
+
+```typescript
+// File: src/lib/utils/keyboard-shortcuts.ts
+// ❌ NEW FILE - Create this file
+
+/**
+ * Keyboard shortcut definitions
+ */
+export const KEYBOARD_SHORTCUTS = {
+	RESET_TEST: { key: "r", ctrlKey: true, description: "Reset current test" },
+	NEW_PASSAGE: { key: "n", ctrlKey: true, description: "Load new passage" },
+	CANCEL_TEST: { key: "Escape", description: "Cancel current test" },
+} as const;
+
+export type ShortcutAction = "reset" | "newPassage" | "cancel";
+
+/**
+ * Check if keyboard event matches a shortcut
+ */
+export function matchesShortcut(
+	event: KeyboardEvent,
+	shortcut: typeof KEYBOARD_SHORTCUTS[keyof typeof KEYBOARD_SHORTCUTS]
+): boolean {
+	const keyMatches = event.key.toLowerCase() === shortcut.key.toLowerCase();
+	const ctrlMatches = shortcut.ctrlKey ? (event.ctrlKey || event.metaKey) : true;
+	
+	return keyMatches && ctrlMatches;
+}
+
+/**
+ * Get shortcut action from keyboard event
+ */
+export function getShortcutAction(event: KeyboardEvent): ShortcutAction | null {
+	if (matchesShortcut(event, KEYBOARD_SHORTCUTS.RESET_TEST)) {
+		return "reset";
+	}
+	if (matchesShortcut(event, KEYBOARD_SHORTCUTS.NEW_PASSAGE)) {
+		return "newPassage";
+	}
+	if (matchesShortcut(event, KEYBOARD_SHORTCUTS.CANCEL_TEST)) {
+		return "cancel";
+	}
+	return null;
+}
+```
+
+**Step 2: Create useKeyboardShortcuts Hook**
+
+```typescript
+// File: src/lib/hooks/useKeyboardShortcuts.ts
+// ❌ NEW FILE - Create this file
+
+import { useEffect, useCallback } from "react";
+import { getShortcutAction, ShortcutAction } from "../utils/keyboard-shortcuts";
+
+interface UseKeyboardShortcutsParams {
+	onReset?: () => void;
+	onNewPassage?: () => void;
+	onCancel?: () => void;
+	enabled?: boolean;
+}
+
+/**
+ * Hook to handle keyboard shortcuts
+ */
+export function useKeyboardShortcuts({
+	onReset,
+	onNewPassage,
+	onCancel,
+	enabled = true,
+}: UseKeyboardShortcutsParams) {
+	const handleKeyDown = useCallback(
+		(event: KeyboardEvent) => {
+			if (!enabled) return;
+
+			const action = getShortcutAction(event);
+
+			if (action === "reset" && onReset) {
+				event.preventDefault();
+				onReset();
+			} else if (action === "newPassage" && onNewPassage) {
+				event.preventDefault();
+				onNewPassage();
+			} else if (action === "cancel" && onCancel) {
+				event.preventDefault();
+				onCancel();
+			}
+		},
+		[enabled, onReset, onNewPassage, onCancel]
+	);
+
+	useEffect(() => {
+		if (!enabled) return;
+
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, [enabled, handleKeyDown]);
+}
+```
+
+**Step 3: Integrate into GameContext**
+
+```tsx
+// File: src/components/GameContext.tsx
+// CHANGE: Add keyboard shortcuts
+
+// ✅ ADD IMPORT (Top of file):
+import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
+
+// ✅ ADD INSIDE GameProvider (after timer integration, before return):
+
+// Keyboard shortcuts
+useKeyboardShortcuts({
+	onReset: resetTest,
+	onNewPassage: fetchNewPassage,
+	onCancel: () => {
+		if (testStatus === "running") {
+			resetTest();
+		}
+	},
+	enabled: testStatus !== "idle",
+});
+```
+
+**Step 4: Update hooks/index.ts**
+
+```typescript
+// File: src/lib/hooks/index.ts
+// ✅ ADD EXPORT:
+
+export { useTimer } from "./useTimer";
+export { useTypingTest } from "./useTypingTest";
+export { useKeyboardShortcuts } from "./useKeyboardShortcuts"; // ← Add this line
+```
+
+---
+
+### Feature 4: **Statistics History & Persistence**
+
+#### Problem:
+No tracking of historical performance or best scores.
+
+#### Solution:
+
+**Step 1: Create Statistics Types**
+
+```typescript
+// File: src/lib/types.ts
+// ✅ ADD TO EXISTING FILE (at the bottom):
+
+/**
+ * Statistics for a single test completion
+ */
+export interface TestResult {
+	wpm: number;
+	accuracy: number;
+	difficulty: Difficulty;
+	mode: Mode;
+	passageId: string;
+	completedAt: string; // ISO timestamp
+	duration: number; // milliseconds
+}
+
+/**
+ * User statistics history
+ */
+export interface UserStatistics {
+	totalTests: number;
+	bestWpm: number;
+	bestAccuracy: number;
+	averageWpm: number;
+	averageAccuracy: number;
+	recentTests: TestResult[]; // Last 10 tests
+	lastUpdated: string; // ISO timestamp
+}
+```
+
+**Step 2: Create Storage Utility (SSR-Safe)**
+
+```typescript
+// File: src/lib/utils/storage.ts
+// ❌ NEW FILE - Create this file
+
+/**
+ * SSR-safe localStorage wrapper
+ * Next.js best practice: Check for window before accessing localStorage
+ */
+
+const STORAGE_KEY_PREFIX = "typing-test-";
+
+/**
+ * Check if we're in browser environment
+ */
+function isBrowser(): boolean {
+	return typeof window !== "undefined";
+}
+
+/**
+ * Get item from localStorage
+ */
+export function getLocalStorage<T>(key: string, defaultValue: T): T {
+	if (!isBrowser()) return defaultValue;
+
+	try {
+		const item = window.localStorage.getItem(`${STORAGE_KEY_PREFIX}${key}`);
+		return item ? JSON.parse(item) : defaultValue;
+	} catch (error) {
+		console.error(`Error reading localStorage key "${key}":`, error);
+		return defaultValue;
+	}
+}
+
+/**
+ * Set item in localStorage
+ */
+export function setLocalStorage<T>(key: string, value: T): void {
+	if (!isBrowser()) return;
+
+	try {
+		window.localStorage.setItem(
+			`${STORAGE_KEY_PREFIX}${key}`,
+			JSON.stringify(value)
+		);
+	} catch (error) {
+		console.error(`Error setting localStorage key "${key}":`, error);
+	}
+}
+
+/**
+ * Remove item from localStorage
+ */
+export function removeLocalStorage(key: string): void {
+	if (!isBrowser()) return;
+
+	try {
+		window.localStorage.removeItem(`${STORAGE_KEY_PREFIX}${key}`);
+	} catch (error) {
+		console.error(`Error removing localStorage key "${key}":`, error);
+	}
+}
+
+/**
+ * Clear all app-related localStorage
+ */
+export function clearAppStorage(): void {
+	if (!isBrowser()) return;
+
+	try {
+		const keys = Object.keys(window.localStorage);
+		keys.forEach(key => {
+			if (key.startsWith(STORAGE_KEY_PREFIX)) {
+				window.localStorage.removeItem(key);
+			}
+		});
+	} catch (error) {
+		console.error("Error clearing app storage:", error);
+	}
+}
+```
+
+**Step 3: Create useStatistics Hook**
+
+```typescript
+// File: src/lib/hooks/useStatistics.ts
+// ❌ NEW FILE - Create this file
+
+import { useState, useCallback, useEffect } from "react";
+import { getLocalStorage, setLocalStorage } from "../utils/storage";
+import type { UserStatistics, TestResult } from "../types";
+
+const STATISTICS_KEY = "user-statistics";
+const MAX_RECENT_TESTS = 10;
+
+const DEFAULT_STATISTICS: UserStatistics = {
+	totalTests: 0,
+	bestWpm: 0,
+	bestAccuracy: 0,
+	averageWpm: 0,
+	averageAccuracy: 0,
+	recentTests: [],
+	lastUpdated: new Date().toISOString(),
+};
+
+/**
+ * Hook to manage user statistics
+ */
+export function useStatistics() {
+	const [statistics, setStatistics] = useState<UserStatistics>(DEFAULT_STATISTICS);
+	const [isLoaded, setIsLoaded] = useState(false);
+
+	// Load statistics from localStorage on mount
+	useEffect(() => {
+		const stored = getLocalStorage<UserStatistics>(STATISTICS_KEY, DEFAULT_STATISTICS);
+		setStatistics(stored);
+		setIsLoaded(true);
+	}, []);
+
+	/**
+	 * Save new test result
+	 */
+	const saveTestResult = useCallback((result: TestResult) => {
+		setStatistics(prev => {
+			const newRecentTests = [result, ...prev.recentTests].slice(0, MAX_RECENT_TESTS);
+			const allTests = [result, ...prev.recentTests];
+
+			// Calculate new averages
+			const totalWpm = allTests.reduce((sum, test) => sum + test.wpm, 0);
+			const totalAccuracy = allTests.reduce((sum, test) => sum + test.accuracy, 0);
+			const count = allTests.length;
+
+			const newStats: UserStatistics = {
+				totalTests: prev.totalTests + 1,
+				bestWpm: Math.max(prev.bestWpm, result.wpm),
+				bestAccuracy: Math.max(prev.bestAccuracy, result.accuracy),
+				averageWpm: Math.round(totalWpm / count),
+				averageAccuracy: Math.round(totalAccuracy / count),
+				recentTests: newRecentTests,
+				lastUpdated: new Date().toISOString(),
+			};
+
+			// Persist to localStorage
+			setLocalStorage(STATISTICS_KEY, newStats);
+
+			return newStats;
+		});
+	}, []);
+
+	/**
+	 * Clear all statistics
+	 */
+	const clearStatistics = useCallback(() => {
+		setStatistics(DEFAULT_STATISTICS);
+		setLocalStorage(STATISTICS_KEY, DEFAULT_STATISTICS);
+	}, []);
+
+	return {
+		statistics,
+		isLoaded,
+		saveTestResult,
+		clearStatistics,
+	};
+}
+```
+
+**Step 4: Update hooks/index.ts**
+
+```typescript
+// File: src/lib/hooks/index.ts
+// ✅ ADD EXPORT:
+
+export { useTimer } from "./useTimer";
+export { useTypingTest } from "./useTypingTest";
+export { useKeyboardShortcuts } from "./useKeyboardShortcuts";
+export { useStatistics } from "./useStatistics"; // ← Add this line
+```
+
+**Step 5: Integrate into GameContext**
+
+```tsx
+// File: src/components/GameContext.tsx
+// CHANGE: Add statistics tracking
+
+// ✅ ADD IMPORT (Top of file):
+import { useStatistics } from "@/lib/hooks/useStatistics";
+import type { TestResult } from "@/lib/types";
+
+// ✅ ADD TO GameState INTERFACE:
+interface GameState {
+	// ... existing properties
+	
+	// ✅ ADD:
+	statistics: UserStatistics;
+	saveTestResult: (result: TestResult) => void;
+	clearStatistics: () => void;
+}
+
+// ✅ ADD TO defaultState:
+const defaultState: GameState = {
+	// ... existing properties
+	
+	// ✅ ADD:
+	statistics: {
+		totalTests: 0,
+		bestWpm: 0,
+		bestAccuracy: 0,
+		averageWpm: 0,
+		averageAccuracy: 0,
+		recentTests: [],
+		lastUpdated: new Date().toISOString(),
+	},
+	saveTestResult: () => {},
+	clearStatistics: () => {},
+};
+
+// ✅ INSIDE GameProvider (after timer, before character validation):
+
+// Statistics tracking
+const { statistics, saveTestResult, clearStatistics } = useStatistics();
+
+// ✅ UPDATE handleTyping to save on completion:
+const handleTyping = useCallback((value: string) => {
+	if (testStatus === "ready" && value.length > 0) {
+		setTestStatus("running");
+		timer.start();
+	}
+	
+	if (testStatus !== "running") return;
+	
+	if (passage && value.length > passage.text.length) {
+		return;
+	}
+	
+	setTypedValue(value);
+	
+	// Check completion
+	if (passage && value.length === passage.text.length && 
+	    characterStates.every(s => s.state === "correct")) {
+		setTestStatus("completed");
+		timer.complete();
+		
+		// ✅ SAVE TEST RESULT
+		const result: TestResult = {
+			wpm,
+			accuracy,
+			difficulty,
+			mode,
+			passageId: passage.id,
+			completedAt: new Date().toISOString(),
+			duration: timer.elapsedMs,
+		};
+		saveTestResult(result);
+	}
+}, [testStatus, passage, timer, characterStates, wpm, accuracy, difficulty, mode, saveTestResult]);
+
+// ✅ ADD TO MEMOIZED VALUE:
+const value: GameState = useMemo(
+	() => ({
+		// ... existing properties
+		
+		// ✅ ADD:
+		statistics,
+		saveTestResult,
+		clearStatistics,
+	}),
+	[
+		// ... existing dependencies
+		
+		// ✅ ADD:
+		statistics,
+		saveTestResult,
+		clearStatistics,
+	]
+);
+```
+
+**Step 6: Display Statistics in Completion Screen**
+
+```tsx
+// File: src/components/typing-test/TypingTestContainter.tsx
+// CHANGE: Update completed state to show statistics
+
+// ❌ OLD COMPLETED STATE (Lines ~51-79):
+if (game.testStatus === "completed") {
+	return (
+		<div className="w-full max-w-4xl mx-auto mt-8">
+			<PassageDisplay />
+			<div className="mt-8 p-6 bg-gray-800 rounded-lg border border-gray-700">
+				<h2 className="text-2xl font-bold text-FemBlue-400 mb-4">
+					Test Complete!
+				</h2>
+				<div className="grid grid-cols-3 gap-4 mb-6">
+					<div>
+						<p className="text-gray-400 text-sm">WPM</p>
+						<p className="text-3xl font-bold text-gray-100">{game.wpm}</p>
+					</div>
+					<div>
+						<p className="text-gray-400 text-sm">Accuracy</p>
+						<p className="text-3xl font-bold text-gray-100">
+							{game.accuracy}%
+						</p>
+					</div>
+					<div>
+						<p className="text-gray-400 text-sm">Time</p>
+						<p className="text-3xl font-bold text-gray-100">{game.time}</p>
+					</div>
+				</div>
+				<button
+					onClick={game.resetTest}
+					className="w-full px-6 py-3 bg-FemBlue-400 hover:bg-FemBlue-500 text-black font-semibold rounded transition"
+					type="button"
+				>
+					Try Again
+				</button>
+			</div>
+		</div>
+	);
+}
+
+// ✅ NEW COMPLETED STATE (Replace above with):
+if (game.testStatus === "completed") {
+	const isNewBest = game.wpm > game.statistics.bestWpm;
+	
+	return (
+		<div className="w-full max-w-4xl mx-auto mt-8">
+			<PassageDisplay />
+			<div className="mt-8 p-6 bg-gray-800 rounded-lg border border-gray-700">
+				<h2 className="text-2xl font-bold text-FemBlue-400 mb-4">
+					Test Complete! {isNewBest && "🎉 New Personal Best!"}
+				</h2>
+				
+				{/* Current Test Results */}
+				<div className="grid grid-cols-3 gap-4 mb-6">
+					<div>
+						<p className="text-gray-400 text-sm">WPM</p>
+						<p className="text-3xl font-bold text-gray-100">{game.wpm}</p>
+					</div>
+					<div>
+						<p className="text-gray-400 text-sm">Accuracy</p>
+						<p className="text-3xl font-bold text-gray-100">
+							{game.accuracy}%
+						</p>
+					</div>
+					<div>
+						<p className="text-gray-400 text-sm">Time</p>
+						<p className="text-3xl font-bold text-gray-100">{game.time}</p>
+					</div>
+				</div>
+				
+				{/* Statistics Summary */}
+				<div className="mb-6 p-4 bg-gray-900 rounded border border-gray-700">
+					<h3 className="text-sm font-semibold text-gray-400 mb-3">
+						Your Statistics
+					</h3>
+					<div className="grid grid-cols-2 gap-4 text-sm">
+						<div>
+							<p className="text-gray-500">Total Tests</p>
+							<p className="text-gray-200 font-semibold">
+								{game.statistics.totalTests}
+							</p>
+						</div>
+						<div>
+							<p className="text-gray-500">Best WPM</p>
+							<p className="text-emerald-400 font-semibold">
+								{game.statistics.bestWpm}
+							</p>
+						</div>
+						<div>
+							<p className="text-gray-500">Average WPM</p>
+							<p className="text-gray-200 font-semibold">
+								{game.statistics.averageWpm}
+							</p>
+						</div>
+						<div>
+							<p className="text-gray-500">Best Accuracy</p>
+							<p className="text-emerald-400 font-semibold">
+								{game.statistics.bestAccuracy}%
+							</p>
+						</div>
+					</div>
+				</div>
+				
+				{/* Action Buttons */}
+				<div className="flex gap-3">
+					<button
+						onClick={game.resetTest}
+						className="flex-1 px-6 py-3 bg-FemBlue-400 hover:bg-FemBlue-500 text-black font-semibold rounded transition"
+						type="button"
+					>
+						Try Again
+					</button>
+					<button
+						onClick={game.fetchNewPassage}
+						className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-gray-100 font-semibold rounded transition"
+						type="button"
+					>
+						New Passage
+					</button>
+				</div>
+				
+				{/* Keyboard Shortcuts Hint */}
+				<p className="mt-4 text-xs text-gray-500 text-center">
+					Shortcuts: <kbd className="px-2 py-1 bg-gray-700 rounded">Ctrl+R</kbd> Reset · 
+					<kbd className="px-2 py-1 bg-gray-700 rounded ml-2">Ctrl+N</kbd> New Passage
+				</p>
+			</div>
+		</div>
+	);
+}
+```
+
+---
+
+## Updated Component Code Examples
+
+### 1. COMPLETE GameContext.tsx (WITH ALL FEATURES)
+
+```tsx
+// File: src/components/GameContext.tsx
+// ✅ COMPLETE UPDATED VERSION
+
+"use client";
+
+import { useTimer } from "@/lib/hooks";
+import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
+import { useStatistics } from "@/lib/hooks/useStatistics";
+import {
+	CharacterState,
+	Difficulty,
+	Mode,
+	Passage,
+	TestResult,
+	TypingTestStatus,
+	UserStatistics,
+} from "@/lib/types";
+import {
+	calculateAccuracy,
+	calculateWPM,
+	formatTime,
+} from "@/lib/utils/metrics-calculation";
+import { validateTypedInput } from "@/lib/utils/typing-validation";
+import {
+	createContext,
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
+
+interface GameState {
+	// Existing state
+	difficulty: Difficulty;
+	mode: Mode;
+	wpm: number;
+	accuracy: number;
+	time: string;
+
+	// Typing test state
+	passage: Passage | null;
+	typedValue: string;
+	characterStates: CharacterState[];
+	testStatus: TypingTestStatus;
+	cursorIndex: number;
+
+	// ✅ NEW: Statistics
+	statistics: UserStatistics;
+
+	// Setters
+	setDifficulty: (d: Difficulty) => void;
+	setMode: (m: Mode) => void;
+
+	// Typing test methods
+	startTest: () => void;
+	resetTest: () => void;
+	handleTyping: (input: string) => void;
+	fetchNewPassage: () => Promise<void>;
+
+	// ✅ NEW: Statistics methods
+	saveTestResult: (result: TestResult) => void;
+	clearStatistics: () => void;
+}
+
+const defaultState: GameState = {
+	difficulty: "easy",
+	mode: "timed",
+	wpm: 0,
+	accuracy: 100,
+	time: "0:60",
+	passage: null,
+	typedValue: "",
+	characterStates: [],
+	testStatus: "idle",
+	cursorIndex: 0,
+	statistics: {
+		totalTests: 0,
+		bestWpm: 0,
+		bestAccuracy: 0,
+		averageWpm: 0,
+		averageAccuracy: 0,
+		recentTests: [],
+		lastUpdated: new Date().toISOString(),
+	},
+	setDifficulty: () => {},
+	setMode: () => {},
+	startTest: () => {},
+	resetTest: () => {},
+	handleTyping: () => {},
+	fetchNewPassage: async () => {},
+	saveTestResult: () => {},
+	clearStatistics: () => {},
+};
+
+const GameContext = createContext<GameState>(defaultState);
+
+export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
+	children,
+}) => {
+	const [difficulty, setDifficulty] = useState<Difficulty>(
+		defaultState.difficulty,
+	);
+	const [mode, setMode] = useState<Mode>(defaultState.mode);
+	const [passage, setPassage] = useState<Passage | null>(null);
+	const [typedValue, setTypedValue] = useState<string>("");
+	const [testStatus, setTestStatus] = useState<TypingTestStatus>("idle");
+
+	// Timer integration
+	const timer = useTimer({
+		duration: mode === "timed" ? 60000 : null,
+		autoStart: false,
+		onComplete: () => {
+			setTestStatus("completed");
+		},
+	});
+
+	// ✅ NEW: Statistics tracking
+	const { statistics, saveTestResult, clearStatistics } = useStatistics();
+
+	// Character validation
+	const characterStates = useMemo(() => {
+		if (!passage) return [];
+		return validateTypedInput(typedValue, passage.text);
+	}, [typedValue, passage]);
+
+	const cursorIndex = typedValue.length;
+
+	// Calculate metrics
+	const { correctCount, incorrectCount } = useMemo(() => {
+		const correct = characterStates.filter((s) => s.state === "correct").length;
+		const incorrect = characterStates.filter(
+			(s) => s.state === "incorrect",
+		).length;
+		return { correctCount: correct, incorrectCount: incorrect };
+	}, [characterStates]);
+
+	const wpm = useMemo(() => {
+		return calculateWPM(correctCount, timer.elapsedMs);
+	}, [correctCount, timer.elapsedMs]);
+
+	const accuracy = useMemo(() => {
+		return calculateAccuracy(correctCount, incorrectCount);
+	}, [correctCount, incorrectCount]);
+
+	const time = useMemo(() => {
+		if (mode === "timed" && timer.remainingMs !== null) {
+			return formatTime(timer.remainingMs);
+		}
+		return formatTime(timer.elapsedMs);
+	}, [mode, timer.elapsedMs, timer.remainingMs]);
+
+	// Fetch passage when difficulty changes
+	const fetchNewPassage = useCallback(async () => {
+		try {
+			const res = await fetch(
+				`/api/passages/action?difficulty=${difficulty.toLowerCase()}`,
+				{ cache: "no-store" },
+			);
+			if (!res.ok) throw new Error("Failed to fetch passage");
+			const data: Passage = await res.json();
+			setPassage(data);
+			setTypedValue(""); // ✅ Clear typed value
+			setTestStatus("ready");
+			timer.reset(); // ✅ Reset timer
+		} catch (error) {
+			console.error("Failed to fetch passage:", error);
+		}
+	}, [difficulty, timer]);
+
+	useEffect(() => {
+		fetchNewPassage();
+	}, [fetchNewPassage]);
+
+	// Typing handlers
+	const startTest = useCallback(() => {
+		if (testStatus !== "ready") return;
+		setTestStatus("running");
+		timer.start();
+	}, [testStatus, timer]);
+
+	const resetTest = useCallback(() => {
+		setTypedValue("");
+		setTestStatus("ready");
+		timer.reset();
+	}, [timer]);
+
+	// ✅ UPDATED: Handle typing with backspace support and statistics saving
+	const handleTyping = useCallback(
+		(value: string) => {
+			// Auto-start on first keystroke
+			if (testStatus === "ready" && value.length > 0) {
+				setTestStatus("running");
+				timer.start();
+			}
+
+			// Only allow typing when running
+			if (testStatus !== "running") return;
+
+			// Prevent typing beyond passage length
+			if (passage && value.length > passage.text.length) {
+				return;
+			}
+
+			// ✅ Allow backspace (value can be shorter)
+			setTypedValue(value);
+
+			// Check completion
+			if (
+				passage &&
+				value.length === passage.text.length &&
+				characterStates.every((s) => s.state === "correct")
+			) {
+				setTestStatus("completed");
+				timer.complete();
+
+				// ✅ Save test result
+				const result: TestResult = {
+					wpm,
+					accuracy,
+					difficulty,
+					mode,
+					passageId: passage.id,
+					completedAt: new Date().toISOString(),
+					duration: timer.elapsedMs,
+				};
+				saveTestResult(result);
+			}
+		},
+		[
+			testStatus,
+			passage,
+			timer,
+			characterStates,
+			wpm,
+			accuracy,
+			difficulty,
+			mode,
+			saveTestResult,
+		],
+	);
+
+	// ✅ NEW: Keyboard shortcuts
+	useKeyboardShortcuts({
+		onReset: resetTest,
+		onNewPassage: fetchNewPassage,
+		onCancel: () => {
+			if (testStatus === "running") {
+				resetTest();
+			}
+		},
+		enabled: testStatus !== "idle",
+	});
+
+	const value: GameState = useMemo(
+		() => ({
+			difficulty,
+			mode,
+			wpm,
+			accuracy,
+			time,
+			passage,
+			typedValue,
+			characterStates,
+			testStatus,
+			cursorIndex,
+			statistics, // ✅ Added
+			setDifficulty,
+			setMode,
+			startTest,
+			resetTest,
+			handleTyping,
+			fetchNewPassage,
+			saveTestResult, // ✅ Added
+			clearStatistics, // ✅ Added
+		}),
+		[
+			difficulty,
+			mode,
+			wpm,
+			accuracy,
+			time,
+			passage,
+			typedValue,
+			characterStates,
+			testStatus,
+			cursorIndex,
+			statistics, // ✅ Added
+			startTest,
+			resetTest,
+			handleTyping,
+			fetchNewPassage,
+			saveTestResult, // ✅ Added
+			clearStatistics, // ✅ Added
+		],
+	);
+
+	return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
+};
+
+export function useGame() {
+	return useContext(GameContext);
+}
+
+export default GameContext;
+```
+
+---
+
+## Implementation Checklist (UPDATED)
+
+### ✅ Phase 1: Backspace Support (PRIORITY 1)
+- [ ] Update `GameContext.tsx` `handleTyping` method
+- [ ] Test backspace functionality
+- [ ] Verify character states update correctly
+
+### ✅ Phase 2: Error Highlighting (PRIORITY 1)
+- [ ] Update `CharacterSpan.tsx` with underline styling
+- [ ] Test visual appearance of incorrect characters
+- [ ] Verify Tailwind classes are applied
+
+### ✅ Phase 3: Keyboard Shortcuts (PRIORITY 2)
+- [ ] Create `lib/utils/keyboard-shortcuts.ts`
+- [ ] Create `lib/hooks/useKeyboardShortcuts.ts`
+- [ ] Integrate into `GameContext.tsx`
+- [ ] Update `lib/hooks/index.ts` exports
+- [ ] Test all keyboard shortcuts (Ctrl+R, Ctrl+N, Escape)
+
+### ✅ Phase 4: Statistics Persistence (PRIORITY 2)
+- [ ] Add statistics types to `lib/types.ts`
+- [ ] Create `lib/utils/storage.ts` (SSR-safe)
+- [ ] Create `lib/hooks/useStatistics.ts`
+- [ ] Integrate into `GameContext.tsx`
+- [ ] Update `TypingTestContainter.tsx` completion screen
+- [ ] Update `lib/hooks/index.ts` exports
+- [ ] Test localStorage persistence
+- [ ] Test statistics calculations
+
+### ✅ Phase 5: Testing & Polish (PRIORITY 3)
+- [ ] Test all features together
+- [ ] Verify SSR compatibility (no localStorage errors on server)
+- [ ] Test keyboard shortcuts don't interfere with typing
+- [ ] Verify statistics persist across page refreshes
+- [ ] Test on mobile devices
+- [ ] Verify accessibility (keyboard navigation)
+
+### ✅ Phase 6: Optional Enhancements
+- [ ] Add statistics visualization (charts)
+- [ ] Export statistics as CSV/JSON
+- [ ] Add difficulty-specific statistics
+- [ ] Add streak tracking
+- [ ] Add achievements/badges system
+
+---
+
+## Migration Guide
+
+### Step-by-Step Implementation Order:
+
+1. **START HERE: Backspace Support** (5 minutes)
+   - Edit `GameContext.tsx` → Update `handleTyping`
+   - Test immediately
+
+2. **Error Highlighting** (2 minutes)
+   - Edit `CharacterSpan.tsx` → Add underline classes
+   - Visual verification
+
+3. **Statistics System** (20 minutes)
+   - Create `lib/utils/storage.ts`
+   - Add types to `lib/types.ts`
+   - Create `lib/hooks/useStatistics.ts`
+   - Update `lib/hooks/index.ts`
+   - Update `GameContext.tsx`
+   - Update `TypingTestContainter.tsx`
+
+4. **Keyboard Shortcuts** (15 minutes)
+   - Create `lib/utils/keyboard-shortcuts.ts`
+   - Create `lib/hooks/useKeyboardShortcuts.ts`
+   - Update `lib/hooks/index.ts`
+   - Update `GameContext.tsx`
+
+5. **Testing** (15 minutes)
+   - Test each feature
+   - Verify no regressions
+   - Test edge cases
+
+**Total Estimated Time:** ~60 minutes
+
+---
+
+## Testing Checklist
+
+### Backspace Support:
+- [ ] Type forward, backspace, type again
+- [ ] Backspace to beginning
+- [ ] Verify WPM/accuracy update correctly
+- [ ] Cannot backspace before start
+
+### Error Highlighting:
+- [ ] Incorrect characters show underline
+- [ ] Correct characters have no underline
+- [ ] Underline visible on all screen sizes
+- [ ] Works with cursor indicator
+
+### Keyboard Shortcuts:
+- [ ] Ctrl+R resets test
+- [ ] Ctrl+N fetches new passage
+- [ ] Escape cancels running test
+- [ ] Shortcuts don't interfere with typing
+- [ ] Shortcuts disabled when idle
+
+### Statistics:
+- [ ] Statistics save on test completion
+- [ ] Best scores update correctly
+- [ ] Averages calculate correctly
+- [ ] Statistics persist across page refresh
+- [ ] Recent tests list updates
+- [ ] Statistics cleared properly
+- [ ] No SSR errors (localStorage)
+
+---
+
+## Troubleshooting
+
+### localStorage SSR Errors:
+**Problem:** `ReferenceError: localStorage is not defined`
+
+**Solution:** Ensure all localStorage access uses the `storage.ts` wrapper with SSR checks.
+
+### Keyboard Shortcuts Not Working:
+**Problem:** Shortcuts trigger but don't work
+
+**Solution:** Verify `useKeyboardShortcuts` is called inside `GameProvider` and `enabled` prop is true.
+
+### Statistics Not Persisting:
+**Problem:** Statistics reset on page refresh
+
+**Solution:** Check browser console for localStorage errors. Verify `useStatistics` hook is properly integrated.
+
+### Backspace Deletes Too Much:
+**Problem:** Backspace removes multiple characters
+
+**Solution:** Verify `handleTyping` doesn't have any string manipulation logic that interferes with input value.
+
+---
+
+## Next.js Architecture Compliance
+
+### ✅ VERIFIED PATTERNS:
+
+1. **Client Components:**
+   - All interactive components use `"use client"` directive
+   - Context providers are Client Components
+   - Hooks are only used in Client Components
+
+2. **Server Components:**
+   - API routes are server-side only
+   - No direct database access in Client Components
+   - Environment variables properly prefixed with `NEXT_PUBLIC_`
+
+3. **Data Flow:**
+   - Server Components fetch data
+   - Props pass data to Client Components
+   - Context used for global client state only
+
+4. **Performance:**
+   - useMemo for expensive calculations
+   - useCallback for event handlers
+   - Minimal client-side JavaScript
+
+---
+
+## Summary of Changes
+
+| File | Status | Changes |
+|------|--------|---------|
+| `GameContext.tsx` | 🟡 UPDATE | Add backspace support, keyboard shortcuts, statistics |
+| `CharacterSpan.tsx` | 🟡 UPDATE | Add error underline styling |
+| `TypingTestContainter.tsx` | 🟡 UPDATE | Enhanced completion screen with statistics |
+| `lib/types.ts` | 🟡 UPDATE | Add TestResult, UserStatistics types |
+| `lib/utils/storage.ts` | 🟢 NEW | SSR-safe localStorage wrapper |
+| `lib/utils/keyboard-shortcuts.ts` | 🟢 NEW | Keyboard shortcut definitions and handlers |
+| `lib/hooks/useStatistics.ts` | 🟢 NEW | Statistics persistence hook |
+| `lib/hooks/useKeyboardShortcuts.ts` | 🟢 NEW | Keyboard shortcuts hook |
+| `lib/hooks/index.ts` | 🟡 UPDATE | Export new hooks |
+
+**Legend:**
+- 🟢 NEW = Create new file
+- 🟡 UPDATE = Modify existing file
+- 🔴 DELETE = Remove file (none in this update)
+
+---
+
+## Final Notes
+
+1. **All code blocks provided are complete and ready to use**
+2. **Comments indicate what's changed from old code**
+3. **No file will be automatically edited - you must manually apply changes**
+4. **Test each feature individually before moving to the next**
+5. **Statistics data is client-side only (localStorage)**
+6. **Keyboard shortcuts are non-intrusive and optional**
+
+**Ready to implement!** Start with Phase 1 (Backspace Support) for immediate impact.
+
+---
+
+
 
 ```
 src/

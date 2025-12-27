@@ -1,6 +1,7 @@
 "use client";
 
 import { useTimer } from "@/lib/hooks";
+import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import {
 	CharacterState,
 	Difficulty,
@@ -161,6 +162,21 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 		timer.reset();
 	}, [timer]);
 
+	useKeyboardShortcuts({
+		onReset: resetTest,
+		onNewPassage: () => {
+			void fetchNewPassage();
+		},
+		onCancel: () => {
+			if (testStatus === "running") {
+				resetTest();
+				timer.reset();
+			}
+		},
+		onStart: startTest,
+		enabled: testStatus !== "idle",
+	});
+
 	const handleTyping = useCallback(
 		(value: string) => {
 			if (testStatus === "ready") {
@@ -170,14 +186,23 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 			}
 			if (testStatus !== "running") return;
 
+			// Prevent typing beyond passage length
+			if (passage && value.length > passage.text.length) {
+				return; // ← Silently ignore extra characters
+			}
 			setTypedValue(value);
 
-			if (passage && value.length >= passage.text.length) {
+			// Check completion
+			if (
+				passage &&
+				value.length === passage.text.length &&
+				characterStates.every((s) => s.state === "correct")
+			) {
 				setTestStatus("completed");
 				timer.complete();
 			}
 		},
-		[testStatus, passage, timer],
+		[testStatus, passage, timer, characterStates],
 	);
 
 	const value: GameState = useMemo(
