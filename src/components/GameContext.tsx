@@ -14,7 +14,6 @@ import {
 	formatTime,
 } from "@/lib/utils/metrics-calculation";
 import { validateTypedInput } from "@/lib/utils/typing-validation";
-import test from "node:test";
 import {
 	createContext,
 	useCallback,
@@ -162,7 +161,61 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 		timer.reset();
 	}, [timer]);
 
-	const value: GameState = useMemo(() => ({}), []);
+	const handleTyping = useCallback(
+		(value: string) => {
+			if (testStatus === "ready") {
+				//autostart on first keystrock
+				setTestStatus("running");
+				timer.start();
+			}
+			if (testStatus !== "running") return;
+
+			setTypedValue(value);
+
+			if (passage && value.length >= passage.text.length) {
+				setTestStatus("completed");
+				timer.complete();
+			}
+		},
+		[testStatus, passage, timer],
+	);
+
+	const value: GameState = useMemo(
+		() => ({
+			difficulty,
+			mode,
+			wpm,
+			accuracy,
+			time,
+			passage,
+			typedValue,
+			characterStates,
+			testStatus,
+			cursorIndex,
+			setDifficulty,
+			setMode,
+			startTest,
+			resetTest,
+			handleTyping,
+			fetchNewPassage,
+		}),
+		[
+			difficulty,
+			mode,
+			wpm,
+			accuracy,
+			time,
+			passage,
+			typedValue,
+			characterStates,
+			testStatus,
+			cursorIndex,
+			startTest,
+			resetTest,
+			handleTyping,
+			fetchNewPassage,
+		],
+	);
 
 	return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 };
