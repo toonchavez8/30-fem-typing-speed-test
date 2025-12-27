@@ -1,11 +1,14 @@
 import StatsContainter from "@/components/statsContainter";
 import Textcontainter from "@/components/textcontainter";
+import { GameProvider } from "@/components/GameContext";
 
 export default function Home() {
 	return (
-		<main className="flex items-center justify-center ">
-			<StatsContainter tittle="StatsContainter" />
-			<Textcontainter tittle="StatsContainter" />
-		</main>
+		<GameProvider>
+			<main className="flex flex-col items-center justify-start mt-16 p4 md:px-16  debug">
+				<StatsContainter />
+				<Textcontainter />
+			</main>
+		</GameProvider>
 	);
 }
