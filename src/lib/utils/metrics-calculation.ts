@@ -2,7 +2,7 @@ export function calculateWPM(
 	correctCharCount: number,
 	elapsedMs: number,
 ): number {
-	if (elapsedMs === 0) return 0;
+	if (elapsedMs <= 0) return 0; // Prevent division by zero
 
 	const minutes = elapsedMs / 60000;
 	const words = correctCharCount / 5;

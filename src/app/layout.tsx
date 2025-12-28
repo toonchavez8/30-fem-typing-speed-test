@@ -2,6 +2,7 @@ import Header from "@/components/header";
 import "./globals.css";
 import type { Metadata } from "next";
 import Footer from "@/components/footer";
+import { GameProvider } from "@/components/GameContext";
 
 export const metadata: Metadata = {
 	title: "Frontend Mentor | Typing Speed Test",
@@ -19,9 +20,11 @@ export default function RootLayout({
 	return (
 		<html lang="en">
 			<body className="font-bold min-h-screen relative group overflow-hidden bg-FemNeutral-900  text-FemNeutral-000 m-auto max-w-7xl">
-				<Header />
-				{children}
-				<Footer />
+				<GameProvider>
+					<Header />
+					{children}
+					<Footer />
+				</GameProvider>
 			</body>
 		</html>
 	);

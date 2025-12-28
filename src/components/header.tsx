@@ -1,6 +1,10 @@
+"use client";
 import Image from "next/image";
+import { useGame } from "@/components/GameContext";
 
 const Header = () => {
+	const game = useGame();
+	const bestWPM = game.statistics.bestWPM || 0;
 	return (
 		<header className="w-full flex items-center justify-between p-4 md:px-16 debug ">
 			<figure>
@@ -32,7 +36,7 @@ const Header = () => {
 				<span className="font-normal text-FemNeutral-500 flex gap-2 items-center">
 					<p className="hidden md:block">Personal best:</p>
 					<p className="block md:hidden">Best: </p>
-					<strong className=" text-FemNeutral-000">75 WPM</strong>
+					<strong className="text-FemNeutral-000">{bestWPM} WPM</strong>
 				</span>
 			</div>
 		</header>

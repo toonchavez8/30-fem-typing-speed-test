@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { TestResult, UserStatistics } from "../types";
 import { getLocalStorage, setLocalStorage } from "../utils/storage";
 
-const STATISTICS_KEY = "uster-statistics";
+const STATISTICS_KEY = "user-statistics";
 const MAX_RECENT_TESTS = 10;
 
 const DEFAULT_STATISTICS: UserStatistics = {

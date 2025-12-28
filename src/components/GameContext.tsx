@@ -6,11 +6,13 @@ import {
 	useContext,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 
 import { useTimer } from "@/lib/hooks";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
+import { useStatistics } from "@/lib/hooks/useStatistics";
 import type {
 	CharacterState,
 	Difficulty,
@@ -26,7 +28,6 @@ import {
 	formatTime,
 } from "@/lib/utils/metrics-calculation";
 import { validateTypedInput } from "@/lib/utils/typing-validation";
-import { useStatistics } from "@/lib/hooks/useStatistics";
 
 interface GameState {
 	difficulty: Difficulty;
@@ -106,12 +107,15 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 
 	// timer integration
 
+	// IMPORTANT: Wrap in useCallback to prevent timer reset on every render!
+	const handleTimerComplete = useCallback(() => {
+		setTestStatus("completed");
+	}, []);
+
 	const timer = useTimer({
-		duration: mode === "timed" ? 60000 : null,
+		duration: mode === "timed" ? 60 : null,
 		autoStart: false,
-		onComplete: () => {
-			setTestStatus("completed");
-		},
+		onComplete: handleTimerComplete,
 	});
 
 	// Character Validation
@@ -145,9 +149,9 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 
 	const time = useMemo(() => {
 		if (mode === "timed" && timer.remainingMs !== null) {
-			return formatTime(timer.remainingMs);
+			return formatTime(timer.remainingMs); // Countdown for timed mode
 		}
-		return formatTime(timer.elapsedMs);
+		return formatTime(timer.elapsedMs); // Count up for passage mode
 	}, [mode, timer.elapsedMs, timer.remainingMs]);
 
 	// fetch passage when difficulty changes
@@ -166,11 +170,12 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 		}
 	}, [difficulty]);
 
-	useEffect(() => {
-		fetchNewPassage();
-	}, [fetchNewPassage]);
-
-	//typing handlers
+	// Define resetTest before the effects that use it
+	const resetTest = useCallback(() => {
+		setTypedValue("");
+		setTestStatus("ready");
+		timer.reset();
+	}, [timer]);
 
 	const startTest = useCallback(() => {
 		if (testStatus !== "ready") return;
@@ -178,11 +183,34 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 		timer.start();
 	}, [testStatus, timer]);
 
-	const resetTest = useCallback(() => {
-		setTypedValue("");
-		setTestStatus("ready");
-		timer.reset();
-	}, [timer]);
+	useEffect(() => {
+		fetchNewPassage();
+	}, [fetchNewPassage]);
+
+	// Use refs to store latest function references for mode change effect
+	const resetTestRef = useRef(resetTest);
+	const fetchNewPassageRef = useRef(fetchNewPassage);
+
+	// Keep refs updated with latest function references
+	useEffect(() => {
+		resetTestRef.current = resetTest;
+		fetchNewPassageRef.current = fetchNewPassage;
+	});
+
+	// Reset and fetch new passage when mode changes
+	const isFirstRender = useRef(true);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: mode is intentionally the trigger - we want to run when mode changes
+	useEffect(() => {
+		// Skip the first render to avoid resetting on mount
+		if (isFirstRender.current) {
+			isFirstRender.current = false;
+			return;
+		}
+		resetTestRef.current();
+		fetchNewPassageRef.current();
+	}, [mode]);
+
+	//typing handlers
 
 	useKeyboardShortcuts({
 		onReset: resetTest,
@@ -215,14 +243,10 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 			setTypedValue(value);
 
 			// Check completion
-			if (
-				passage &&
-				value.length === passage.text.length &&
-				characterStates.every((s) => s.state === "correct")
-			) {
+			if (passage && value.length === passage.text.length) {
 				setTestStatus("completed");
-				timer.complete();
-
+				// Use a slight delay to ensure timer has updated, or calculate directly
+				const finalElapsedMs = timer.complete(); // Get the final time
 				const result: TestResult = {
 					wpm,
 					accuracy,
@@ -230,7 +254,7 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 					mode,
 					passageID: passage.id,
 					completedAt: new Date().toISOString(),
-					durationMs: timer.elapsedMs,
+					durationMs: finalElapsedMs,
 				};
 				saveTestResult(result);
 			}
@@ -239,7 +263,6 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 			testStatus,
 			passage,
 			timer,
-			characterStates,
 			wpm,
 			accuracy,
 			difficulty,

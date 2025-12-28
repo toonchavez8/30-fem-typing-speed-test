@@ -17,7 +17,7 @@ export interface UseTimerReturn extends TimerSnapshot {
 	pause: () => void;
 	resume: () => void;
 	reset: () => void;
-	complete: () => void;
+	complete: () => number;
 }
 
 const DEFAULT_TICK_RATE = 1000;
@@ -138,30 +138,37 @@ export const useTimer = (options: UseTimerOptions = {}): UseTimerReturn => {
 		setStatus("idle");
 	}, [clearTimer]);
 
-	const complete = useCallback(() => {
+	const complete = useCallback((): number => {
 		if (status === "completed") {
-			return;
+			return pausedAccumulatedRef.current;
 		}
 
 		const totalElapsed = getElapsed();
 		handleCompletion(totalElapsed);
+		return totalElapsed;
 	}, [getElapsed, handleCompletion, status]);
+
+	// Use refs to avoid dependency on function references
+	const startRef = useRef(start);
+	const resetRef = useRef(reset);
+
+	// Keep refs updated
+	useEffect(() => {
+		startRef.current = start;
+		resetRef.current = reset;
+	});
 
 	useEffect(() => {
 		if (autoStart) {
-			start();
-		} else {
-			reset();
+			startRef.current();
 		}
+		// Only reset on mount, not on every autoStart change when false
+		// The manual reset() call handles user-initiated resets
 
 		return () => {
 			clearTimer();
 		};
-	}, [autoStart, clearTimer, reset, start]);
-
-	useEffect(() => {
-		reset();
-	}, [reset]);
+	}, [autoStart, clearTimer]);
 
 	const remainingMs = useMemo(() => {
 		if (durationMs === null) {
