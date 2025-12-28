@@ -96,7 +96,7 @@ export const useTypingTest = (
 
 	useEffect(() => {
 		reset();
-	}, [passage, reset]);
+	}, [reset]);
 
 	const handleInput = useCallback(
 		(nextValue: string) => {
@@ -107,12 +107,15 @@ export const useTypingTest = (
 
 			const isComplete =
 				limitedValue.length === passageLength && passageLength > 0;
-			const nextStatus: TypingTestStatus =
-				limitedValue.length === 0
-					? readyStatus
-					: isComplete
-						? "completed"
-						: "running";
+
+			let nextStatus: TypingTestStatus;
+			if (limitedValue.length === 0) {
+				nextStatus = readyStatus;
+			} else if (isComplete) {
+				nextStatus = "completed";
+			} else {
+				nextStatus = "running";
+			}
 
 			dispatch({
 				type: "UPDATE_TYPED",

@@ -161,7 +161,7 @@ export const useTimer = (options: UseTimerOptions = {}): UseTimerReturn => {
 
 	useEffect(() => {
 		reset();
-	}, [durationMs, reset]);
+	}, [reset]);
 
 	const remainingMs = useMemo(() => {
 		if (durationMs === null) {

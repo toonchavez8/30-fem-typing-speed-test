@@ -37,9 +37,28 @@ export interface TypingResult extends TypingMetrics {
 	durationMs: number;
 }
 
-
 export interface CharacterState {
 	character: string;
-	state:"untyped" | "correct" | "incorrect";
+	state: "untyped" | "correct" | "incorrect";
 	index: number;
+}
+
+export interface TestResult {
+	wpm: number;
+	accuracy: number;
+	difficulty: Difficulty;
+	mode: Mode;
+	passageID: string;
+	completedAt: string;
+	durationMs: number;
+}
+
+export interface UserStatistics {
+	totalTests: number;
+	bestWPM: number;
+	bestAccuracy: number;
+	averageWPM: number;
+	averageAccuracy: number;
+	recentTests: TestResult[];
+	lastUpdated: string;
 }

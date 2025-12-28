@@ -1,6 +1,6 @@
 "use client";
-import { useGame } from "@/components/GameContext";
 import { useEffect, useRef } from "react";
+import { useGame } from "@/components/GameContext";
 
 const TypingInput: React.FC = () => {
 	const game = useGame();

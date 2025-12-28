@@ -1,6 +1,6 @@
 "use client";
 
-import { CharacterState } from "@/lib/types";
+import type { CharacterState } from "@/lib/types";
 
 interface CharacterSpanProps {
 	character: string;

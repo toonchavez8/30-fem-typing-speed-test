@@ -1,6 +1,5 @@
-import StatsContainter from "@/components/statsContainter";
-
 import { GameProvider } from "@/components/GameContext";
+import StatsContainter from "@/components/statsContainter";
 import TypingTestContainer from "@/components/typing-test/TypingTestContainter";
 
 export default function Home() {

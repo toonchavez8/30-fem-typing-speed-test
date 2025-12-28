@@ -1,8 +1,17 @@
 "use client";
 
+import {
+	createContext,
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
+
 import { useTimer } from "@/lib/hooks";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
-import {
+import type {
 	CharacterState,
 	Difficulty,
 	Mode,
@@ -15,14 +24,6 @@ import {
 	formatTime,
 } from "@/lib/utils/metrics-calculation";
 import { validateTypedInput } from "@/lib/utils/typing-validation";
-import {
-	createContext,
-	useCallback,
-	useContext,
-	useEffect,
-	useMemo,
-	useState,
-} from "react";
 
 interface GameState {
 	difficulty: Difficulty;
