@@ -1,302 +1,748 @@
-# Typing Test Implementation Guide - Bug Fixes
+# Typing Test Implementation Guide
 
-This guide provides step-by-step instructions to fix the identified issues in the typing test application.
+This guide provides step-by-step instructions to implement the UI enhancements and animations for the typing test application.
 
 ---
 
 ## Table of Contents
 
-1. [Issue #1: WPM and Time Not Updating (CRITICAL)](#issue-1-wpm-and-time-not-updating-critical)
-2. [Issue #2: Timer Reset Loop in useTimer Hook](#issue-2-timer-reset-loop-in-usetimer-hook)
-3. [Issue #3: Personal Best Not Loading from LocalStorage](#issue-3-personal-best-not-loading-from-localstorage)
-4. [Issue #4: Results Modal Not Showing](#issue-4-results-modal-not-showing)
-5. [Issue #5: Completion Detection Too Strict](#issue-5-completion-detection-too-strict)
+1. [Prerequisites - Install GSAP](#step-1-prerequisites---install-gsap)
+2. [Dynamic Color Coding for Stats](#step-2-dynamic-color-coding-for-stats)
+3. [GSAP Color Change Animations](#step-3-gsap-color-change-animations)
+4. [Character Impact Shake Animation](#step-4-character-impact-shake-animation)
+5. [Start Typing Overlay Button](#step-5-start-typing-overlay-button)
+6. [Confetti Animation on Completion](#step-6-confetti-animation-on-completion)
+7. [Results Modal with GSAP Animations](#step-7-results-modal-with-gsap-animations)
+8. [New Passage Reset Behavior](#step-8-new-passage-reset-behavior)
 
 ---
 
-## Issue #1: WPM and Time Not Updating (CRITICAL)
+## Step 1: Prerequisites - Install GSAP
 
-### Problem Analysis
+GSAP (GreenSock Animation Platform) is required for smooth animations. Install it first.
 
-**Root Cause:** The `onComplete` callback passed to `useTimer` is an **inline anonymous function**:
+### Terminal Command
 
-```typescript
-// In GameContext.tsx (around line 97-103)
-const timer = useTimer({
-    duration: mode === "timed" ? 60 : null,
-    autoStart: false,
-    onComplete: () => {           // ← THIS IS THE PROBLEM!
-        setTestStatus("completed");
-    },
-});
+```bash
+npm install gsap
 ```
 
-This causes a **cascade of function recreations** on every render:
+### Why GSAP?
 
-1. `onComplete` is a new function reference every render
-2. `runTick` callback depends on `onComplete` → gets recreated
-3. `startInterval` depends on `runTick` → gets recreated  
-4. `start` depends on `startInterval` → gets recreated
-5. The `useEffect` in `useTimer` has `start` in dependencies
-6. When `start` changes, the effect runs and calls `reset()` (since `autoStart=false`)
-7. **The timer resets on EVERY render, so `elapsedMs` always stays at 0!**
-
-This is why:
-- **WPM stays at 0** (because `elapsedMs` is 0, and `calculateWPM` returns 0 to avoid division by zero)
-- **Time stays at "0:00"** (because `elapsedMs` is 0)
-- **Accuracy DOES update** (because it only depends on character counts, not time)
-
-### Solution
-
-Wrap `onComplete` in `useCallback` to create a **stable function reference**.
-
-**File:** `src/components/GameContext.tsx`
-
-**Step 1:** Find this code (around lines 97-103):
-
-```typescript
-// timer integration
-
-const timer = useTimer({
-    duration: mode === "timed" ? 60 : null,
-    autoStart: false,
-    onComplete: () => {
-        setTestStatus("completed");
-    },
-});
-```
-
-**Step 2:** Replace with this fixed code:
-
-```typescript
-// timer integration
-
-// IMPORTANT: Wrap in useCallback to prevent timer reset on every render!
-const handleTimerComplete = useCallback(() => {
-    setTestStatus("completed");
-}, []);
-
-const timer = useTimer({
-    duration: mode === "timed" ? 60 : null,
-    autoStart: false,
-    onComplete: handleTimerComplete,
-});
-```
-
-**Why this works:** `useCallback` with an empty dependency array `[]` ensures `handleTimerComplete` maintains the same reference across renders. This stops the cascade effect that was resetting the timer.
+GSAP provides high-performance animations with better control than CSS animations alone. It handles:
+- Smooth color transitions
+- Shake effects with decay
+- Fade in/out animations
+- Complex sequenced animations
 
 ---
 
-## Issue #2: Timer Reset Loop in useTimer Hook
+## Step 2: Dynamic Color Coding for Stats
 
-### Problem Analysis
+### Overview
 
-The `useTimer` hook has a `useEffect` that depends on function references:
+The stats display (WPM, Accuracy, Time) should change colors based on values and test status:
 
-```typescript
-// In useTimer.ts (around lines 154-165)
-useEffect(() => {
-    if (autoStart) {
-        start();
-    } else {
-        reset();  // ← This gets called when ANY dependency changes!
-    }
+| Stat | Idle | Good | Medium | Poor |
+|------|------|------|--------|------|
+| Time | White | Yellow (running) | - | - |
+| Accuracy | White | Green (>90%) | Yellow (70-90%) | Red (<70%) |
+| WPM | White | Green (>40) | Yellow (20-40) | Red (<20) |
 
-    return () => {
-        clearTimer();
-    };
-}, [autoStart, clearTimer, reset, start]);  // ← start changes every render!
-```
+### File: `src/components/statsContainter.tsx`
 
-When `autoStart` is `false` and `start` changes (due to callback chain), this effect runs and calls `reset()`.
+#### Step 2.1: Add helper functions for color determination
 
-### Solution
-
-Modify the `useEffect` to only respond to `autoStart` changes, not function reference changes.
-
-**File:** `src/lib/hooks/useTimer.ts`
-
-**Option A: Use refs for stable function references (Recommended)**
-
-Find this code (around lines 154-165):
-
-```typescript
-useEffect(() => {
-    if (autoStart) {
-        start();
-    } else {
-        reset();
-    }
-
-    return () => {
-        clearTimer();
-    };
-}, [autoStart, clearTimer, reset, start]);
-```
-
-Replace with:
-
-```typescript
-// Use refs to avoid dependency on function references
-const startRef = useRef(start);
-const resetRef = useRef(reset);
-
-// Keep refs updated
-useEffect(() => {
-    startRef.current = start;
-    resetRef.current = reset;
-});
-
-useEffect(() => {
-    if (autoStart) {
-        startRef.current();
-    }
-    // Only reset on mount, not on every autoStart change when false
-    // The manual reset() call handles user-initiated resets
-
-    return () => {
-        clearTimer();
-    };
-}, [autoStart, clearTimer]);
-```
-
-**Option B: Simpler fix - only run on mount (Quick Fix)**
-
-```typescript
-// eslint-disable-next-line react-hooks/exhaustive-deps
-useEffect(() => {
-    if (autoStart) {
-        start();
-    }
-    // Removed the else { reset() } to prevent unwanted resets
-
-    return () => {
-        clearTimer();
-    };
-}, [autoStart]); // Only depend on autoStart
-```
-
-**Note:** Option B requires an ESLint disable comment but is simpler. Option A is more correct but requires adding `useRef` import.
-
----
-
-## Issue #3: Personal Best Not Loading from LocalStorage
-
-### Problem Analysis
-
-The `Header` component has a hardcoded value:
+**Add these functions AFTER the imports and BEFORE the `StatsContainter` component:**
 
 ```tsx
-<strong className=" text-FemNeutral-000">75 WPM</strong>
+// Add after the existing import
+import { useGame } from "./GameContext";
+
+// Color determination helpers
+function getTimeColor(testStatus: string): string {
+    if (testStatus === "idle" || testStatus === "ready") {
+        return "text-FemNeutral-000"; // White
+    }
+    return "text-FemYellow-400"; // Yellow when running or completed
+}
+
+function getAccuracyColor(accuracy: number, testStatus: string): string {
+    if (testStatus === "idle" || testStatus === "ready") {
+        return "text-FemNeutral-000"; // White
+    }
+    if (accuracy >= 90) return "text-FemGreen-500";  // Green
+    if (accuracy >= 70) return "text-FemYellow-400"; // Yellow
+    return "text-FemRed-500"; // Red
+}
+
+function getWpmColor(wpm: number, testStatus: string): string {
+    if (testStatus === "idle" || testStatus === "ready") {
+        return "text-FemNeutral-000"; // White
+    }
+    if (wpm > 40) return "text-FemGreen-500";  // Green
+    if (wpm >= 20) return "text-FemYellow-400"; // Yellow
+    return "text-FemRed-500"; // Red
+}
 ```
 
-It should read from localStorage.
+#### Step 2.2: Update the stats display to use dynamic colors
 
-### Solution
+**BEFORE (lines ~77-95):**
+```tsx
+<dl className="flex gap-6 text-lg ">
+    <div className="flex aligns-center justify-center gap-2.5">
+        <dt className="font-medium text-gray-400">WPM:</dt>
+        <dd className=" border-r border-gray-700 pr-4">{currentWpm}</dd>
+    </div>
 
-**File:** `src/components/header.tsx`
+    <div className="flex aligns-center justify-center gap-2.5">
+        <dt className="font-medium text-gray-400">Accuracy</dt>
+        <dd className="border-r border-gray-700 pr-4">
+            {currentAccuracy}%
+        </dd>
+    </div>
 
-Replace the entire file with:
+    <div className="flex aligns-center justify-center gap-2.5">
+        <dt className="font-medium text-gray-400">Time</dt>
+        <dd className="">{currentTime}</dd>
+    </div>
+</dl>
+```
 
+**AFTER:**
+```tsx
+<dl className="flex gap-6 text-lg ">
+    <div className="flex aligns-center justify-center gap-2.5">
+        <dt className="font-medium text-gray-400">WPM:</dt>
+        <dd className={`border-r border-gray-700 pr-4 transition-colors duration-300 ${getWpmColor(currentWpm, game.testStatus)}`}>
+            {currentWpm}
+        </dd>
+    </div>
+
+    <div className="flex aligns-center justify-center gap-2.5">
+        <dt className="font-medium text-gray-400">Accuracy</dt>
+        <dd className={`border-r border-gray-700 pr-4 transition-colors duration-300 ${getAccuracyColor(currentAccuracy, game.testStatus)}`}>
+            {currentAccuracy}%
+        </dd>
+    </div>
+
+    <div className="flex aligns-center justify-center gap-2.5">
+        <dt className="font-medium text-gray-400">Time</dt>
+        <dd className={`transition-colors duration-300 ${getTimeColor(game.testStatus)}`}>
+            {currentTime}
+        </dd>
+    </div>
+</dl>
+```
+
+---
+
+## Step 3: GSAP Color Change Animations
+
+### Overview
+
+Add a subtle animation (scale pulse) when stats change color.
+
+### File: `src/components/statsContainter.tsx`
+
+#### Step 3.1: Update imports at the TOP of the file
+
+**BEFORE:**
 ```tsx
 "use client";
 
-import Image from "next/image";
-import { useEffect, useState } from "react";
-import { getLocalStorage } from "@/lib/utils/storage";
-import type { UserStatistics } from "@/lib/types";
+type Mode = "timed" | "passage";
+```
 
-const STATISTICS_KEY = "uster-statistics";  // Must match key in useStatistics.ts
+**AFTER:**
+```tsx
+"use client";
 
-const Header = () => {
-    const [bestWPM, setBestWPM] = useState<number>(0);
+import { useEffect, useRef } from "react";
+import gsap from "gsap";
 
+type Mode = "timed" | "passage";
+```
+
+#### Step 3.2: Add refs and animation logic inside the component
+
+**Inside the `StatsContainter` component, AFTER the existing variable declarations, ADD:**
+
+```tsx
+const StatsContainter: React.FC<StatsContainterProps> = ({
+    wpm,
+    accuracy,
+    time,
+    difficulty,
+    mode,
+    onDifficultyChange,
+    onModeChange,
+}) => {
+    const game = useGame();
+
+    // ADD THESE REFS
+    const wpmRef = useRef<HTMLElement>(null);
+    const accuracyRef = useRef<HTMLElement>(null);
+    const timeRef = useRef<HTMLElement>(null);
+    
+    // Track previous colors to detect changes
+    const prevColorsRef = useRef({
+        wpm: "",
+        accuracy: "",
+        time: ""
+    });
+
+    // Existing code...
+    const currentWpm = wpm ?? game.wpm;
+    const currentAccuracy = accuracy ?? game.accuracy;
+    const currentTime = time ?? game.time;
+    const currentDifficulty = (difficulty ?? game.difficulty) as Difficulty;
+    const currentMode = (mode ?? game.mode) as Mode;
+
+    // ADD THESE: Calculate current colors
+    const wpmColor = getWpmColor(currentWpm, game.testStatus);
+    const accuracyColor = getAccuracyColor(currentAccuracy, game.testStatus);
+    const timeColor = getTimeColor(game.testStatus);
+
+    // ADD THESE: Animate on color change
     useEffect(() => {
-        // Load bestWPM from localStorage on mount
-        const stored = getLocalStorage<UserStatistics | null>(STATISTICS_KEY, null);
-        if (stored && typeof stored.bestWPM === "number") {
-            setBestWPM(stored.bestWPM);
+        if (prevColorsRef.current.wpm !== wpmColor && prevColorsRef.current.wpm !== "") {
+            gsap.fromTo(wpmRef.current, 
+                { scale: 1.2 }, 
+                { scale: 1, duration: 0.3, ease: "back.out(1.7)" }
+            );
         }
-    }, []);
+        prevColorsRef.current.wpm = wpmColor;
+    }, [wpmColor]);
 
-    // Listen for storage changes (updates when test completes)
     useEffect(() => {
-        const handleStorageChange = () => {
-            const stored = getLocalStorage<UserStatistics | null>(STATISTICS_KEY, null);
-            if (stored && typeof stored.bestWPM === "number") {
-                setBestWPM(stored.bestWPM);
-            }
-        };
+        if (prevColorsRef.current.accuracy !== accuracyColor && prevColorsRef.current.accuracy !== "") {
+            gsap.fromTo(accuracyRef.current, 
+                { scale: 1.2 }, 
+                { scale: 1, duration: 0.3, ease: "back.out(1.7)" }
+            );
+        }
+        prevColorsRef.current.accuracy = accuracyColor;
+    }, [accuracyColor]);
 
-        // Also check periodically for same-tab updates (storage event only fires cross-tab)
-        const interval = setInterval(handleStorageChange, 1000);
-        window.addEventListener("storage", handleStorageChange);
-        
-        return () => {
-            clearInterval(interval);
-            window.removeEventListener("storage", handleStorageChange);
-        };
-    }, []);
+    useEffect(() => {
+        if (prevColorsRef.current.time !== timeColor && prevColorsRef.current.time !== "") {
+            gsap.fromTo(timeRef.current, 
+                { scale: 1.2 }, 
+                { scale: 1, duration: 0.3, ease: "back.out(1.7)" }
+            );
+        }
+        prevColorsRef.current.time = timeColor;
+    }, [timeColor]);
+
+    // ... rest of the component
+```
+
+#### Step 3.3: Attach refs to the dd elements
+
+**Update the `<dd>` elements to include refs:**
+
+```tsx
+<dd 
+    ref={wpmRef}
+    className={`border-r border-gray-700 pr-4 transition-colors duration-300 ${wpmColor}`}
+>
+    {currentWpm}
+</dd>
+
+<dd 
+    ref={accuracyRef}
+    className={`border-r border-gray-700 pr-4 transition-colors duration-300 ${accuracyColor}`}
+>
+    {currentAccuracy}%
+</dd>
+
+<dd 
+    ref={timeRef}
+    className={`transition-colors duration-300 ${timeColor}`}
+>
+    {currentTime}
+</dd>
+```
+
+---
+
+## Step 4: Character Impact Shake Animation
+
+### Overview
+
+Add a subtle shake effect to the passage display when the user types with high accuracy (>90%) for more than 5 seconds and has typed more than 20 characters.
+
+### File: `src/components/typing-test/PassageDisplay.tsx`
+
+**BEFORE (entire file):**
+```tsx
+"use client";
+
+import { useGame } from "../GameContext";
+import CharacterSpan from "./CharacterSpan";
+
+const PassageDisplay: React.FC = () => {
+    const game = useGame();
+
+    if (!game.passage) return null;
+
+    const characters = game.passage.text.split("");
 
     return (
-        <header className="w-full flex items-center justify-between p-4 md:px-16 debug ">
-            <figure>
-                <Image
-                    src="/images/logo-large.svg"
-                    alt="Typing test logo"
-                    width={240}
-                    height={48}
-                    className="hidden md:block"
-                />
-                <Image
-                    src="/images/logo-small.svg"
-                    alt="Typing test logo small"
-                    width={32}
-                    height={32}
-                    className="block md:hidden"
-                />
-            </figure>
+        <div className="text-2xl md:text-3xl leading-relaxed font-medium  w-full">
+            {characters.map((char, index) => {
+                const charState = game.characterStates[index];
+                const isCursor = index === game.cursorIndex;
 
-            <div className="flex items-center gap-2.5 ">
-                <figure>
-                    <Image
-                        src="/images/icon-personal-best.svg"
-                        alt="trophy icon"
-                        width={18}
-                        height={18}
+                return (
+                    <CharacterSpan
+                        key={`${index}-${char}`}
+                        character={char}
+                        state={charState?.state || "untyped"}
+                        isCursor={isCursor}
+                        index={index}
                     />
-                </figure>
-                <span className="font-normal text-FemNeutral-500 flex gap-2 items-center">
-                    <p className="hidden md:block">Personal best:</p>
-                    <p className="block md:hidden">Best: </p>
-                    <strong className="text-FemNeutral-000">{bestWPM} WPM</strong>
-                </span>
-            </div>
-        </header>
+                );
+            })}
+        </div>
     );
 };
 
-export default Header;
+export default PassageDisplay;
+```
+
+**AFTER (entire file):**
+```tsx
+"use client";
+
+import { useEffect, useRef } from "react";
+import gsap from "gsap";
+import { useGame } from "../GameContext";
+import CharacterSpan from "./CharacterSpan";
+
+const PassageDisplay: React.FC = () => {
+    const game = useGame();
+    const containerRef = useRef<HTMLDivElement>(null);
+    const highAccuracyStartRef = useRef<number | null>(null);
+    const prevTypedLengthRef = useRef(0);
+
+    // Track high accuracy duration
+    useEffect(() => {
+        if (game.accuracy >= 90 && game.testStatus === "running") {
+            if (highAccuracyStartRef.current === null) {
+                highAccuracyStartRef.current = Date.now();
+            }
+        } else {
+            highAccuracyStartRef.current = null;
+        }
+    }, [game.accuracy, game.testStatus]);
+
+    // Shake effect on character typed (with conditions)
+    useEffect(() => {
+        const currentLength = game.typedValue.length;
+        const hasTypedNewChar = currentLength > prevTypedLengthRef.current;
+        prevTypedLengthRef.current = currentLength;
+
+        if (!hasTypedNewChar || !containerRef.current) return;
+
+        // Check conditions: >90% accuracy, >5 seconds at high accuracy, >20 chars typed
+        const highAccuracyDuration = highAccuracyStartRef.current 
+            ? (Date.now() - highAccuracyStartRef.current) / 1000 
+            : 0;
+
+        if (
+            game.accuracy >= 90 && 
+            highAccuracyDuration > 5 && 
+            currentLength > 20
+        ) {
+            // Micro-shake with decay
+            gsap.fromTo(
+                containerRef.current,
+                { x: -1 },
+                { 
+                    x: 0, 
+                    duration: 0.1, 
+                    ease: "elastic.out(1, 0.3)",
+                    overwrite: true
+                }
+            );
+        }
+    }, [game.typedValue, game.accuracy]);
+
+    // Reset tracking when test resets
+    useEffect(() => {
+        if (game.testStatus === "ready" || game.testStatus === "idle") {
+            highAccuracyStartRef.current = null;
+            prevTypedLengthRef.current = 0;
+        }
+    }, [game.testStatus]);
+
+    if (!game.passage) return null;
+
+    const characters = game.passage.text.split("");
+
+    return (
+        <div 
+            ref={containerRef}
+            className="text-2xl md:text-3xl leading-relaxed font-medium w-full"
+        >
+            {characters.map((char, index) => {
+                const charState = game.characterStates[index];
+                const isCursor = index === game.cursorIndex;
+
+                return (
+                    <CharacterSpan
+                        key={`${index}-${char}`}
+                        character={char}
+                        state={charState?.state || "untyped"}
+                        isCursor={isCursor}
+                        index={index}
+                    />
+                );
+            })}
+        </div>
+    );
+};
+
+export default PassageDisplay;
 ```
 
 ---
 
-## Issue #4: Results Modal Not Showing
+## Step 5: Start Typing Overlay Button
 
-### Problem Analysis
+### Overview
 
-The completed state shows inline results but not a prominent modal overlay.
+Create a blue button overlay that says "Start typing test" with "or click the text and start typing" below it. This button:
+- Blurs the text area behind it when visible
+- Fades out when user starts typing
+- Fades back in when test is reset or new passage loads
 
-### Solution
-
-**Step 1:** Create a new modal component.
-
-**File:** `src/components/typing-test/ResultsModal.tsx` (create new file)
+### File: `src/components/typing-test/StartOverlay.tsx` (CREATE NEW FILE)
 
 ```tsx
 "use client";
 
-import { useGame } from "@/components/GameContext";
+import { useEffect, useRef } from "react";
+import gsap from "gsap";
+import { useGame } from "../GameContext";
+
+const StartOverlay: React.FC = () => {
+    const game = useGame();
+    const overlayRef = useRef<HTMLDivElement>(null);
+    const isVisible = game.testStatus === "ready" || game.testStatus === "idle";
+
+    useEffect(() => {
+        if (!overlayRef.current) return;
+
+        if (isVisible) {
+            // Fade in
+            gsap.to(overlayRef.current, {
+                opacity: 1,
+                duration: 0.3,
+                ease: "power2.out",
+                display: "flex"
+            });
+        } else {
+            // Fade out
+            gsap.to(overlayRef.current, {
+                opacity: 0,
+                duration: 0.3,
+                ease: "power2.in",
+                onComplete: () => {
+                    if (overlayRef.current) {
+                        overlayRef.current.style.display = "none";
+                    }
+                }
+            });
+        }
+    }, [isVisible]);
+
+    const handleClick = () => {
+        // Focus the hidden input to start typing
+        const input = document.querySelector('input[aria-label="Typing input"]') as HTMLInputElement;
+        input?.focus();
+    };
+
+    return (
+        <div
+            ref={overlayRef}
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-FemNeutral-900/80 backdrop-blur-sm rounded-lg"
+            style={{ opacity: isVisible ? 1 : 0, display: isVisible ? "flex" : "none" }}
+        >
+            <button
+                onClick={handleClick}
+                className="px-8 py-4 bg-FemBlue-600 hover:bg-FemBlue-400 text-white text-xl font-semibold rounded-lg transition-colors shadow-lg shadow-FemBlue-600/30"
+                type="button"
+            >
+                Start typing test
+            </button>
+            <p className="mt-3 text-FemNeutral-400 text-sm">
+                or click the text and start typing
+            </p>
+        </div>
+    );
+};
+
+export default StartOverlay;
+```
+
+### File: `src/components/typing-test/TypingTestContainter.tsx`
+
+**Add the import at the top:**
+```tsx
+import StartOverlay from "./StartOverlay";
+```
+
+**Update the Idle/Ready state section:**
+
+**BEFORE:**
+```tsx
+// Idle/Ready state - show instructions
+if (game.testStatus === "idle" || game.testStatus === "ready") {
+    return (
+        <div className="w-full  mx-auto mt-8 text-pretty">
+            <div className="relative">
+                <PassageDisplay />
+                <TypingInput />
+            </div>
+            <div className="mt-6 text-center">
+                <p className="text-gray-400 text-sm">
+                    Click the text above and start typing to begin
+                </p>
+            </div>
+        </div>
+    );
+}
+```
+
+**AFTER:**
+```tsx
+// Idle/Ready state - show overlay
+if (game.testStatus === "idle" || game.testStatus === "ready") {
+    return (
+        <div className="w-full mx-auto mt-8 text-pretty">
+            <div className="relative">
+                <PassageDisplay />
+                <TypingInput />
+                <StartOverlay />
+            </div>
+        </div>
+    );
+}
+```
+
+---
+
+## Step 6: Confetti Animation on Completion
+
+### Overview
+
+Create a canvas-based confetti animation that plays for 3 seconds when the user completes a test.
+
+### File: `src/components/typing-test/Confetti.tsx` (CREATE NEW FILE)
+
+```tsx
+"use client";
+
+import { useEffect, useRef, useCallback } from "react";
+
+interface ConfettiProps {
+    isActive: boolean;
+    duration?: number; // in milliseconds
+}
+
+interface Particle {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    color: string;
+    size: number;
+    rotation: number;
+    rotationSpeed: number;
+}
+
+const COLORS = ["#4ca6ff", "#4dd67b", "#f4dc73", "#d64d5b", "#177dff", "#ffffff"];
+
+const Confetti: React.FC<ConfettiProps> = ({ isActive, duration = 3000 }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const particlesRef = useRef<Particle[]>([]);
+    const animationRef = useRef<number | null>(null);
+    const startTimeRef = useRef<number | null>(null);
+
+    const createParticle = useCallback((canvas: HTMLCanvasElement): Particle => {
+        return {
+            x: Math.random() * canvas.width,
+            y: -10,
+            vx: (Math.random() - 0.5) * 8,
+            vy: Math.random() * 3 + 2,
+            color: COLORS[Math.floor(Math.random() * COLORS.length)],
+            size: Math.random() * 8 + 4,
+            rotation: Math.random() * 360,
+            rotationSpeed: (Math.random() - 0.5) * 10
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isActive || !canvasRef.current) {
+            if (animationRef.current) {
+                cancelAnimationFrame(animationRef.current);
+                animationRef.current = null;
+            }
+            return;
+        }
+
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        // Set canvas size
+        const resizeCanvas = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        };
+        resizeCanvas();
+        window.addEventListener("resize", resizeCanvas);
+
+        // Initialize particles
+        particlesRef.current = Array.from({ length: 150 }, () => createParticle(canvas));
+        startTimeRef.current = Date.now();
+
+        const animate = () => {
+            const elapsed = Date.now() - (startTimeRef.current || 0);
+            
+            if (elapsed > duration) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                return;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Add new particles periodically
+            if (elapsed < duration * 0.7 && Math.random() > 0.7) {
+                particlesRef.current.push(createParticle(canvas));
+            }
+
+            particlesRef.current = particlesRef.current.filter((p) => {
+                // Update position
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.1; // Gravity
+                p.rotation += p.rotationSpeed;
+
+                // Draw particle
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate((p.rotation * Math.PI) / 180);
+                ctx.fillStyle = p.color;
+                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+                ctx.restore();
+
+                // Keep particle if still visible
+                return p.y < canvas.height + 20;
+            });
+
+            animationRef.current = requestAnimationFrame(animate);
+        };
+
+        animate();
+
+        return () => {
+            window.removeEventListener("resize", resizeCanvas);
+            if (animationRef.current) {
+                cancelAnimationFrame(animationRef.current);
+            }
+        };
+    }, [isActive, duration, createParticle]);
+
+    if (!isActive) return null;
+
+    return (
+        <canvas
+            ref={canvasRef}
+            className="fixed inset-0 pointer-events-none z-[100]"
+            style={{ width: "100vw", height: "100vh" }}
+        />
+    );
+};
+
+export default Confetti;
+```
+
+### File: `src/components/typing-test/TypingTestContainter.tsx`
+
+**Add the import:**
+```tsx
+import Confetti from "./Confetti";
+```
+
+**Add state for confetti (near other useState declarations):**
+```tsx
+const [showConfetti, setShowConfetti] = useState(false);
+```
+
+**Update the completion effect:**
+
+**BEFORE:**
+```tsx
+// Show modal when test completes
+useEffect(() => {
+    if (game.testStatus === "completed") {
+        setShowResultsModal(true);
+    }
+}, [game.testStatus]);
+```
+
+**AFTER:**
+```tsx
+// Show modal and confetti when test completes
+useEffect(() => {
+    if (game.testStatus === "completed") {
+        setShowResultsModal(true);
+        setShowConfetti(true);
+        
+        // Stop confetti after 3 seconds
+        const timer = setTimeout(() => {
+            setShowConfetti(false);
+        }, 3000);
+        
+        return () => clearTimeout(timer);
+    }
+}, [game.testStatus]);
+```
+
+**Add Confetti component at the start of the return JSX (wrap everything in a fragment if needed):**
+
+```tsx
+return (
+    <>
+        <Confetti isActive={showConfetti} duration={3000} />
+        {/* ... rest of the component JSX */}
+    </>
+);
+```
+
+---
+
+## Step 7: Results Modal with GSAP Animations
+
+### Overview
+
+Update the existing Results Modal to:
+- Have smooth fade-in animation when appearing
+- Have fade-out animation when closing
+- Only overlay the text area and stats container (not header/footer)
+
+### File: `src/components/typing-test/ResultsModel.tsx`
+
+**BEFORE (top section):**
+```tsx
+"use client";
+
+import { useGame } from "../GameContext";
 
 interface ResultsModalProps {
     isOpen: boolean;
@@ -313,247 +759,293 @@ const ResultsModal: React.FC<ResultsModalProps> = ({ isOpen, onClose }) => {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
             {/* Backdrop */}
-            <div 
+            <button
                 className="absolute inset-0 bg-black/70 backdrop-blur-sm"
                 onClick={onClose}
-                onKeyDown={(e) => e.key === "Escape" && onClose()}
-                role="button"
-                tabIndex={0}
-                aria-label="Close modal"
+                type="button"
             />
-            
-            {/* Modal Content */}
-            <div className="relative z-10 w-full max-w-md mx-4 p-6 bg-gray-800 rounded-xl border border-gray-700 shadow-2xl">
-                <h2 className="text-2xl font-bold text-FemBlue-400 mb-6 text-center">
-                    Test Complete! {isNewBest && "🎉"}
-                </h2>
-
-                {isNewBest && (
-                    <p className="text-emerald-400 text-center mb-4 font-semibold">
-                        New Personal Best!
-                    </p>
-                )}
-
-                {/* Results Grid */}
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="text-center p-3 bg-gray-900 rounded-lg">
-                        <p className="text-gray-400 text-xs uppercase tracking-wide">WPM</p>
-                        <p className="text-3xl font-bold text-gray-100">{game.wpm}</p>
-                    </div>
-                    <div className="text-center p-3 bg-gray-900 rounded-lg">
-                        <p className="text-gray-400 text-xs uppercase tracking-wide">Accuracy</p>
-                        <p className="text-3xl font-bold text-gray-100">{game.accuracy}%</p>
-                    </div>
-                    <div className="text-center p-3 bg-gray-900 rounded-lg">
-                        <p className="text-gray-400 text-xs uppercase tracking-wide">Time</p>
-                        <p className="text-3xl font-bold text-gray-100">{game.time}</p>
-                    </div>
-                </div>
-
-                {/* Statistics */}
-                <div className="mb-6 p-4 bg-gray-900/50 rounded-lg border border-gray-700">
-                    <h3 className="text-sm font-semibold text-gray-400 mb-3">Your Statistics</h3>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                            <p className="text-gray-500">Total Tests</p>
-                            <p className="text-gray-200 font-semibold">{game.statistics.totalTests}</p>
-                        </div>
-                        <div>
-                            <p className="text-gray-500">Best WPM</p>
-                            <p className="text-emerald-400 font-semibold">{game.statistics.bestWPM}</p>
-                        </div>
-                        <div>
-                            <p className="text-gray-500">Average WPM</p>
-                            <p className="text-gray-200 font-semibold">{game.statistics.averageWPM}</p>
-                        </div>
-                        <div>
-                            <p className="text-gray-500">Best Accuracy</p>
-                            <p className="text-emerald-400 font-semibold">{game.statistics.bestAccuracy}%</p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-3">
-                    <button
-                        onClick={() => {
-                            game.resetTest();
-                            onClose();
-                        }}
-                        className="flex-1 px-6 py-3 bg-FemBlue-400 hover:bg-FemBlue-500 text-black font-semibold rounded-lg transition"
-                        type="button"
-                    >
-                        Try Again
-                    </button>
-                    <button
-                        onClick={() => {
-                            game.fetchNewPassage();
-                            onClose();
-                        }}
-                        className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-gray-100 font-semibold rounded-lg transition"
-                        type="button"
-                    >
-                        New Passage
-                    </button>
-                </div>
-
-                {/* Keyboard Shortcuts */}
-                <p className="mt-4 text-xs text-gray-500 text-center">
-                    Press <kbd className="px-2 py-1 bg-gray-700 rounded">Ctrl+R</kbd> to reset or{" "}
-                    <kbd className="px-2 py-1 bg-gray-700 rounded">Ctrl+N</kbd> for new passage
-                </p>
-            </div>
-        </div>
-    );
-};
-
-export default ResultsModal;
 ```
 
-**Step 2:** Update `TypingTestContainter.tsx` to use the modal.
+**AFTER (top section with GSAP):**
+```tsx
+"use client";
 
-Add imports at the top:
+import { useEffect, useRef, useState } from "react";
+import gsap from "gsap";
+import { useGame } from "../GameContext";
+
+interface ResultsModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+}
+
+const ResultsModal: React.FC<ResultsModalProps> = ({ isOpen, onClose }) => {
+    const game = useGame();
+    const backdropRef = useRef<HTMLDivElement>(null);
+    const modalRef = useRef<HTMLDivElement>(null);
+    const [shouldRender, setShouldRender] = useState(false);
+
+    // Handle render state
+    useEffect(() => {
+        if (isOpen) {
+            setShouldRender(true);
+        }
+    }, [isOpen]);
+
+    // Animate in when modal opens
+    useEffect(() => {
+        if (!shouldRender) return;
+
+        const backdrop = backdropRef.current;
+        const modal = modalRef.current;
+
+        if (isOpen && backdrop && modal) {
+            // Animate in
+            gsap.fromTo(
+                backdrop,
+                { opacity: 0 },
+                { opacity: 1, duration: 0.3, ease: "power2.out" }
+            );
+            gsap.fromTo(
+                modal,
+                { opacity: 0, scale: 0.9, y: 20 },
+                { opacity: 1, scale: 1, y: 0, duration: 0.4, ease: "back.out(1.7)" }
+            );
+        }
+    }, [isOpen, shouldRender]);
+
+    // Handle close with animation
+    const handleClose = () => {
+        const backdrop = backdropRef.current;
+        const modal = modalRef.current;
+
+        if (backdrop && modal) {
+            // Animate out
+            gsap.to(modal, {
+                opacity: 0,
+                scale: 0.9,
+                y: 20,
+                duration: 0.25,
+                ease: "power2.in"
+            });
+            gsap.to(backdrop, {
+                opacity: 0,
+                duration: 0.25,
+                ease: "power2.in",
+                onComplete: () => {
+                    setShouldRender(false);
+                    onClose();
+                }
+            });
+        } else {
+            onClose();
+        }
+    };
+
+    if (!shouldRender) return null;
+
+    const isNewBest = game.wpm > (game.statistics.bestWPM || 0);
+
+    return (
+        // Changed from "fixed" to "absolute" to only overlay the parent container
+        <div 
+            ref={backdropRef}
+            className="absolute inset-0 z-50 flex items-center justify-center"
+        >
+            {/* Backdrop */}
+            <button
+                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                onClick={handleClose}
+                type="button"
+                aria-label="Close modal"
+            />
+
+            {/* Modal Content - add ref */}
+            <div 
+                ref={modalRef}
+                className="relative z-10 w-full max-w-md mx-4 p-6 bg-gray-800 rounded-xl border border-gray-700 shadow-2xl"
+            >
+```
+
+**Also update all `onClick={onClose}` to `onClick={handleClose}` in the buttons:**
+
+```tsx
+{/* Action Buttons */}
+<div className="flex gap-3">
+    <button
+        onClick={() => {
+            game.resetTest();
+            handleClose();  // Changed from onClose
+        }}
+        className="flex-1 px-6 py-3 bg-FemBlue-400 hover:bg-FemBlue-500 text-black font-semibold rounded-lg transition"
+        type="button"
+    >
+        Try Again
+    </button>
+    <button
+        onClick={() => {
+            game.fetchNewPassage();
+            handleClose();  // Changed from onClose
+        }}
+        className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-gray-100 font-semibold rounded-lg transition"
+        type="button"
+    >
+        New Passage
+    </button>
+</div>
+```
+
+### File: `src/components/typing-test/TypingTestContainter.tsx` - Complete Refactor
+
+**Replace the entire component with this structure to ensure modal positioning:**
 
 ```tsx
 "use client";
 
-import { useEffect, useState } from "react";  // Add useState and useEffect
+import { useEffect, useState } from "react";
 import { useGame } from "@/components/GameContext";
 import PassageDisplay from "./PassageDisplay";
+import ResultsModal from "./ResultsModel";
 import TypingInput from "./TypingInput";
-import ResultsModal from "./ResultsModal";  // Add this import
-```
+import StartOverlay from "./StartOverlay";
+import Confetti from "./Confetti";
 
-Add state and effect at the beginning of the component:
-
-```tsx
 const TypingTestContainer: React.FC = () => {
     const game = useGame();
     const [showResultsModal, setShowResultsModal] = useState(false);
+    const [showConfetti, setShowConfetti] = useState(false);
 
-    // Show modal when test completes
+    // Show modal and confetti when test completes
     useEffect(() => {
         if (game.testStatus === "completed") {
             setShowResultsModal(true);
-        } else {
-            setShowResultsModal(false);
+            setShowConfetti(true);
+            
+            // Stop confetti after 3 seconds
+            const timer = setTimeout(() => {
+                setShowConfetti(false);
+            }, 3000);
+            
+            return () => clearTimeout(timer);
         }
     }, [game.testStatus]);
 
-    // ... rest of component
-```
+    // Loading state
+    if (!game.passage) {
+        return (
+            <div className="w-full mx-auto mt-8 text-pretty">
+                <p className="text-gray-400 text-center">Loading passage...</p>
+            </div>
+        );
+    }
 
-Add the modal at the end of each return statement (or wrap in a fragment):
-
-```tsx
-    // At the end, before return null:
     return (
         <>
-            {/* Keep your existing completed state JSX */}
-            <ResultsModal 
-                isOpen={showResultsModal} 
-                onClose={() => setShowResultsModal(false)} 
-            />
+            <Confetti isActive={showConfetti} duration={3000} />
+            
+            {/* Relative container for modal positioning - modal only covers this area */}
+            <div className="relative w-full mx-auto mt-8 text-pretty min-h-[200px]">
+                {/* Passage display area */}
+                <div className="relative">
+                    <PassageDisplay />
+                    {game.testStatus !== "completed" && <TypingInput />}
+                    {(game.testStatus === "idle" || game.testStatus === "ready") && (
+                        <StartOverlay />
+                    )}
+                </div>
+
+                {/* Results Modal - positioned absolute within this container */}
+                <ResultsModal
+                    isOpen={showResultsModal}
+                    onClose={() => setShowResultsModal(false)}
+                />
+            </div>
         </>
     );
+};
+
+export default TypingTestContainer;
 ```
 
 ---
 
-## Issue #5: Completion Detection Too Strict
+## Step 8: New Passage Reset Behavior
 
-### Problem Analysis
+### Overview
 
-In `GameContext.tsx`, the completion check requires ALL characters to be correct:
+When a new passage is loaded, ensure the timer and typed values are reset.
 
-```typescript
-if (
-    passage &&
-    value.length === passage.text.length &&
-    characterStates.every((s) => s.state === "correct")  // ← Too strict!
-) {
+### File: `src/components/GameContext.tsx`
+
+**Verify/Update the `fetchNewPassage` function to reset state:**
+
+**BEFORE (if it doesn't reset):**
+```tsx
+const fetchNewPassage = useCallback(async () => {
+    try {
+        const res = await fetch(
+            `/api/passages/action?difficulty=${difficulty.toLowerCase()}`,
+            { cache: "no-store" },
+        );
+        if (!res.ok) throw new Error("Failed to fetch passage");
+        const data: Passage = await res.json();
+        setPassage(data);
+        setTestStatus("ready");
+    } catch (error) {
+        console.error("Failed to fetch passage:", error);
+    }
+}, [difficulty]);
 ```
 
-This means if you have ANY typos, the test never completes.
-
-### Solution
-
-**File:** `src/components/GameContext.tsx`
-
-Find the completion check in `handleTyping` (around line 217-221):
-
-```typescript
-// Check completion
-if (
-    passage &&
-    value.length === passage.text.length &&
-    characterStates.every((s) => s.state === "correct")
-) {
-```
-
-Replace with:
-
-```typescript
-// Check completion - complete when all characters typed (regardless of errors)
-if (passage && value.length === passage.text.length) {
+**AFTER (with reset):**
+```tsx
+const fetchNewPassage = useCallback(async () => {
+    try {
+        // Reset state before fetching new passage
+        setTypedValue("");
+        timer.reset();
+        
+        const res = await fetch(
+            `/api/passages/action?difficulty=${difficulty.toLowerCase()}`,
+            { cache: "no-store" },
+        );
+        if (!res.ok) throw new Error("Failed to fetch passage");
+        const data: Passage = await res.json();
+        setPassage(data);
+        setTestStatus("ready");
+    } catch (error) {
+        console.error("Failed to fetch passage:", error);
+    }
+}, [difficulty, timer]);
 ```
 
 ---
 
-## Summary of All Changes Required
+## Summary Checklist
 
-| Priority | File | Change |
-|----------|------|--------|
-| **CRITICAL** | `src/components/GameContext.tsx` | Wrap `onComplete` in `useCallback` |
-| HIGH | `src/lib/hooks/useTimer.ts` | Fix useEffect dependencies to prevent reset loop |
-| HIGH | `src/components/GameContext.tsx` | Remove `.every()` check from completion logic |
-| MEDIUM | `src/components/header.tsx` | Add "use client", load bestWPM from localStorage |
-| MEDIUM | `src/components/typing-test/ResultsModal.tsx` | Create new modal component |
-| MEDIUM | `src/components/typing-test/TypingTestContainter.tsx` | Add modal state and render ResultsModal |
+After implementing all changes, verify the following:
 
----
-
-## Quick Fix Summary
-
-**The MOST IMPORTANT fix** is in `GameContext.tsx`. Change this:
-
-```typescript
-const timer = useTimer({
-    duration: mode === "timed" ? 60 : null,
-    autoStart: false,
-    onComplete: () => {
-        setTestStatus("completed");
-    },
-});
-```
-
-To this:
-
-```typescript
-const handleTimerComplete = useCallback(() => {
-    setTestStatus("completed");
-}, []);
-
-const timer = useTimer({
-    duration: mode === "timed" ? 60 : null,
-    autoStart: false,
-    onComplete: handleTimerComplete,
-});
-```
-
-This single change should fix both WPM and Time not updating!
+- [ ] **GSAP installed** - Run `npm install gsap`
+- [ ] **Stats colors change dynamically** based on values and test status
+- [ ] **Stats animate** (scale pulse) when colors change
+- [ ] **Passage shakes subtly** when typing with >90% accuracy for >5 seconds with >20 chars typed
+- [ ] **Start overlay** appears with blur effect, fades out when typing begins
+- [ ] **Confetti animation** plays for 3 seconds on test completion
+- [ ] **Results modal** fades in/out smoothly with GSAP
+- [ ] **Modal only overlays** the typing area, not header/footer
+- [ ] **New passage** properly resets timer and typed values
 
 ---
 
-## Testing Checklist
+## File Changes Summary
 
-After implementing these fixes, verify:
-
-- [ ] Timer starts counting when you begin typing
-- [ ] WPM updates in real-time as you type
-- [ ] Time counts down (timed mode) or up (passage mode)
-- [ ] Modal appears when test completes
-- [ ] Results in modal show correct WPM, accuracy, and time
-- [ ] Personal best updates in header after completing a test with higher WPM
-- [ ] Personal best persists after page refresh
-- [ ] Test completes even if you have typos
+| File | Action |
+|------|--------|
+| `package.json` | Add `gsap` dependency via `npm install gsap` |
+| `src/components/statsContainter.tsx` | Add imports, color helpers, refs, GSAP animations |
+| `src/components/typing-test/PassageDisplay.tsx` | Add GSAP shake animation effect |
+| `src/components/typing-test/StartOverlay.tsx` | **CREATE NEW FILE** - Overlay button component |
+| `src/components/typing-test/Confetti.tsx` | **CREATE NEW FILE** - Canvas confetti component |
+| `src/components/typing-test/ResultsModel.tsx` | Add GSAP fade in/out animations, change positioning |
+| `src/components/typing-test/TypingTestContainter.tsx` | Integrate overlay, confetti, restructure for modal |
+| `src/components/GameContext.tsx` | Ensure `fetchNewPassage` resets timer and typedValue |
