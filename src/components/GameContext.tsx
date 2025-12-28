@@ -16,7 +16,9 @@ import type {
 	Difficulty,
 	Mode,
 	Passage,
+	TestResult,
 	TypingTestStatus,
+	UserStatistics,
 } from "@/lib/types";
 import {
 	calculateAccuracy,
@@ -24,6 +26,7 @@ import {
 	formatTime,
 } from "@/lib/utils/metrics-calculation";
 import { validateTypedInput } from "@/lib/utils/typing-validation";
+import { useStatistics } from "@/lib/hooks/useStatistics";
 
 interface GameState {
 	difficulty: Difficulty;
@@ -37,6 +40,12 @@ interface GameState {
 	characterStates: CharacterState[];
 	testStatus: TypingTestStatus;
 	cursorIndex: number;
+	//userstatistics
+	statistics: UserStatistics;
+
+	//user stattistics setters and functions
+	saveTestResult: (result: TestResult) => void;
+	clearStatistics: () => void;
 
 	// setters
 	setDifficulty: (d: Difficulty) => void;
@@ -60,14 +69,24 @@ const defaultState: GameState = {
 	characterStates: [],
 	testStatus: "idle",
 	cursorIndex: 0,
+	statistics: {
+		totalTests: 0,
+		bestWPM: 0,
+		bestAccuracy: 0,
+		averageWPM: 0,
+		averageAccuracy: 0,
+		recentTests: [],
+		lastUpdated: new Date().toISOString(),
+	},
 	// typing test related methods - placeholders
-	// placeholders
 	setDifficulty: () => {},
 	setMode: () => {},
 	startTest: () => {},
 	resetTest: () => {},
 	handleTyping: () => {},
 	fetchNewPassage: async () => {},
+	saveTestResult: () => {},
+	clearStatistics: () => {},
 };
 
 const GameContext = createContext<GameState>(defaultState);
@@ -82,6 +101,8 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 	const [passage, setPassage] = useState<Passage | null>(null);
 	const [typedValue, setTypedValue] = useState<string>("");
 	const [testStatus, setTestStatus] = useState<TypingTestStatus>("idle");
+
+	const { statistics, saveTestResult, clearStatistics } = useStatistics();
 
 	// timer integration
 
@@ -180,7 +201,7 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 
 	const handleTyping = useCallback(
 		(value: string) => {
-			if (testStatus === "ready") {
+			if (testStatus === "ready" && value.length > 0) {
 				//autostart on first keystrock
 				setTestStatus("running");
 				timer.start();
@@ -201,9 +222,30 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 			) {
 				setTestStatus("completed");
 				timer.complete();
+
+				const result: TestResult = {
+					wpm,
+					accuracy,
+					difficulty,
+					mode,
+					passageID: passage.id,
+					completedAt: new Date().toISOString(),
+					durationMs: timer.elapsedMs,
+				};
+				saveTestResult(result);
 			}
 		},
-		[testStatus, passage, timer, characterStates],
+		[
+			testStatus,
+			passage,
+			timer,
+			characterStates,
+			wpm,
+			accuracy,
+			difficulty,
+			mode,
+			saveTestResult,
+		],
 	);
 
 	const value: GameState = useMemo(
@@ -224,6 +266,10 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 			resetTest,
 			handleTyping,
 			fetchNewPassage,
+
+			statistics,
+			saveTestResult,
+			clearStatistics,
 		}),
 		[
 			difficulty,
@@ -240,6 +286,9 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 			resetTest,
 			handleTyping,
 			fetchNewPassage,
+			statistics,
+			saveTestResult,
+			clearStatistics,
 		],
 	);
 
