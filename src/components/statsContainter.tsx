@@ -1,8 +1,8 @@
 "use client";
-import { useRef } from "react";
-import { useGame } from "./GameContext";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
+import { useRef } from "react";
+import { useGame } from "./GameContext";
 
 type Mode = "timed" | "passage";
 type Difficulty = "easy" | "medium" | "hard";

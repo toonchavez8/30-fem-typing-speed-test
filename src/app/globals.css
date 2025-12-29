@@ -60,14 +60,14 @@ body {
 }
 
 .animated-element {
-  will-change: transform, opacity;
-  backface-visibility: hidden;
-  transform: translateZ(0); /* Force GPU layer */
+	will-change: transform, opacity;
+	backface-visibility: hidden;
+	transform: translateZ(0); /* Force GPU layer */
 }
 
-@media (prefers-reduced-motion: reduce){
-	.animated-element{
-		animation: none !important;
-		transition: none !important;
+@media (prefers-reduced-motion: reduce) {
+	.animated-element {
+		animation: none;
+		transition: none;
 	}
 }
