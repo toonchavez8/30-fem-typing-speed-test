@@ -58,7 +58,7 @@ const TypingTestContainer: React.FC = () => {
 	return (
 		<>
 			{/* Relative container for modal positioning - modal only covers this area */}
-			<div className="relative w-full mx-auto mt-8 text-pretty min-h-[200px]">
+			<div className="relative w-full mx-auto mt-8 text-pretty min-h-50">
 				{/* Passage display area */}
 				<div className="relative">
 					<PassageDisplay />
