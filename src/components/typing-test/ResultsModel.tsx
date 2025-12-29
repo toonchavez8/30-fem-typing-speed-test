@@ -1,7 +1,8 @@
 "use client";
 
+import { useGSAP } from "@gsap/react";
 import { gsap } from "gsap";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useGame } from "../GameContext";
 
 interface ResultsModalProps {
@@ -11,64 +12,100 @@ interface ResultsModalProps {
 
 const ResultsModal: React.FC<ResultsModalProps> = ({ isOpen, onClose }) => {
   const game = useGame();
-  const backdropRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const backdropRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const [shouldRender, setShouldRender] = useState(false);
+  const timelineRef = useRef<gsap.core.Timeline>(null);
 
-  //handle Render State
-  useEffect(() => {
-    if (isOpen) {
-      setShouldRender(true);
-    }
-  }, [isOpen]);
+  // Handle render state when isOpen changes
+  useGSAP(
+    () => {
+      if (isOpen && !shouldRender) {
+        setShouldRender(true);
+      }
+    },
+    { dependencies: [isOpen] },
+  );
 
-  //animate is when modal opens
-  useEffect(() => {
-    if (!shouldRender) return;
+  // GSAP-Master recommended: useGSAP with timeline for sequenced modal animations
+  useGSAP(
+    () => {
+      if (!shouldRender || !backdropRef.current || !modalRef.current) return;
 
-    const backdrop = backdropRef.current;
-    const modal = modalRef.current;
+      const timeline = gsap.timeline({ paused: true });
 
-    if (isOpen && backdrop && modal) {
-      //animate in
-      gsap.fromTo(
-        backdrop,
-        { opacity: 0 },
-        { opacity: 1, duration: 0.7, ease: "power2.out" },
-      );
-      gsap.fromTo(
-        modal,
-        { opacity: 0, scale: 0.9, y: 20 },
-        { opacity: 1, scale: 1, y: 0, duration: 0.4, ease: "back.out(1.7)" },
-      );
-    }
-  }, [isOpen, shouldRender]);
+      timeline
+        .fromTo(
+          backdropRef.current,
+          { opacity: 0 },
+          { opacity: 1, duration: 0.7, ease: "power2.out", force3D: true },
+        )
+        .fromTo(
+          modalRef.current,
+          { opacity: 0, scale: 0.9, y: 20 },
+          {
+            opacity: 1,
+            scale: 1,
+            y: 0,
+            duration: 0.4,
+            ease: "back.out(1.7)",
+            force3D: true,
+            clearProps: "scale,y",
+          },
+          "-=0.15",
+        );
+      timelineRef.current = timeline;
+
+      if (isOpen) {
+        timeline.play();
+      }
+
+      return () => {
+        timeline.kill();
+      };
+    },
+    {
+      scope: containerRef,
+      dependencies: [shouldRender, isOpen],
+    },
+  );
 
   const handleClose = () => {
     const backDrop = backdropRef.current;
     const modal = modalRef.current;
 
-    if (backDrop && modal) {
-      //animate out
-      gsap.to(modal, {
+    if (!backDrop || !modal) {
+      onClose();
+      return;
+    }
+
+    const exitTimeline = gsap.timeline({
+      onComplete: () => {
+        setShouldRender(false);
+        onClose();
+      },
+    });
+
+    exitTimeline
+      .to(modalRef.current, {
         opacity: 0,
         scale: 0.9,
         y: 20,
-        duration: 0.6,
+        duration: 0.25,
         ease: "power2.in",
-      });
-      gsap.to(backDrop, {
-        opacity: 0,
-        duration: 0.6,
-        ease: "power2.in",
-        onComplete: () => {
-          setShouldRender(false);
-          onClose();
+        force3D: true,
+      })
+      .to(
+        backdropRef.current,
+        {
+          opacity: 0,
+          duration: 0.25,
+          ease: "power2.in",
+          force3D: true,
         },
-      });
-    } else {
-      onClose();
-    }
+        "-=0.2",
+      );
   };
 
   if (!shouldRender) return null;
@@ -77,11 +114,12 @@ const ResultsModal: React.FC<ResultsModalProps> = ({ isOpen, onClose }) => {
 
   return (
     <div
-      ref={backdropRef}
+      ref={containerRef}
       className="absolute inset-0 z-50 flex items-center justify-center"
     >
       {/* Backdrop */}
       <button
+        ref={backdropRef}
         className="absolute inset-0 bg-black/5 backdrop-blur-sm"
         onClick={handleClose}
         type="button"
@@ -91,7 +129,8 @@ const ResultsModal: React.FC<ResultsModalProps> = ({ isOpen, onClose }) => {
       {/* Modal Content */}
       <div
         ref={modalRef}
-        className="relative z-10 w-full max-w-md mx-4 p-6 bg-gray-800 rounded-xl border border-gray-700 shadow-2xl"
+        className="relative z-10 w-full max-w-md mx-4 p-6 bg-gray-800 rounded-xl border border-gray-700 shadow-2xl animated-element"
+        style={{ opacity: 0, transform: "scale(0.9) translateY(20px)" }}
       >
         <h2 className="text-2xl font-bold text-FemBlue-400 mb-6 text-center">
           Test Complete! {isNewBest && "🎉"}
@@ -161,7 +200,7 @@ const ResultsModal: React.FC<ResultsModalProps> = ({ isOpen, onClose }) => {
           <button
             onClick={() => {
               game.resetTest();
-              onClose();
+              handleClose();
             }}
             className="flex-1 px-6 py-3 bg-FemBlue-400 hover:bg-FemBlue-500 text-black font-semibold rounded-lg transition"
             type="button"
@@ -171,7 +210,7 @@ const ResultsModal: React.FC<ResultsModalProps> = ({ isOpen, onClose }) => {
           <button
             onClick={() => {
               game.fetchNewPassage();
-              onClose();
+              handleClose();
             }}
             className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-gray-100 font-semibold rounded-lg transition"
             type="button"

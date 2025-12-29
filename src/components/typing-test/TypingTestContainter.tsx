@@ -22,7 +22,9 @@ const TypingTestContainer: React.FC = () => {
   if (!game.passage) {
     return (
       <div className="w-full  mx-auto mt-8 text-pretty">
-        <p className="text-gray-400 text-center">Loading passage...</p>
+        <p className="text-gray-400 text-center animated-element animate-pulse">
+          Loading passage...
+        </p>
       </div>
     );
   }
@@ -53,16 +55,25 @@ const TypingTestContainer: React.FC = () => {
   }
 
   // Completed state
-  if (game.testStatus === "completed") {
-    return (
-      <ResultsModal
-        isOpen={showResultsModal}
-        onClose={() => setShowResultsModal(false)}
-      />
-    );
-  }
+  return (
+    <>
+      {/* Relative container for modal positioning - modal only covers this area */}
+      <div className="relative w-full mx-auto mt-8 text-pretty min-h-[200px]">
+        {/* Passage display area */}
+        <div className="relative">
+          <PassageDisplay />
+          {game.testStatus !== "completed" && <TypingInput />}
+          {game.testStatus === "idle" && <StartOverlay />}
+        </div>
 
-  return null;
+        {/* Results Modal - positioned absolute within this container */}
+        <ResultsModal
+          isOpen={showResultsModal}
+          onClose={() => setShowResultsModal(false)}
+        />
+      </div>
+    </>
+  );
 };
 
 export default TypingTestContainer;
