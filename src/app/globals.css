@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@font-face {
+	font-family: "Sora";
+	src: url("/fonts/Sora/static/Sora-Regular.ttf") format("truetype");
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Sora";
+	src: url("/fonts/Sora/static/Sora-SemiBold.ttf") format("truetype");
+	font-weight: 600;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Sora";
+	src: url("/fonts/Sora/static/Sora-Bold.ttf") format("truetype");
+	font-weight: 700;
+	font-style: normal;
+	font-display: swap;
+}
+
+:root {
+	--sora: "Sora";
+}
+
+@theme {
+	--color-FemNeutral-900: #121212;
+	--color-FemNeutral-800: #262626;
+	--color-FemNeutral-500: #717178;
+	--color-FemNeutral-400: #949497;
+	--color-FemNeutral-200: #ededed;
+	--color-FemNeutral-000: #ffffff;
+	--color-FemBlue-600: #177dff;
+	--color-FemBlue-400: #4ca6ff;
+	--color-FemRed-500: #d64d5b;
+	--color-FemGreen-500: #4dd67b;
+	--color-FemYellow-400: #f4dc73;
+	--font-sans: var(--sora);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--background: #0a0a0a;
+		--foreground: #ededed;
+	}
+}
+
+body {
+	display: grid;
+	grid-template-rows: auto 1fr auto;
+}
+
+.debug {
+	border: 1px solid red;
+}
+
+.animated-element {
+	will-change: transform, opacity;
+	backface-visibility: hidden;
+	transform: translateZ(0); /* Force GPU layer */
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.animated-element {
+		animation: none;
+		transition: none;
+	}
+}
