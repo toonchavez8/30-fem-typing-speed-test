@@ -157,6 +157,8 @@ export const GameProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 	// fetch passage when difficulty changes
 	const fetchNewPassage = useCallback(async () => {
 		try {
+			// Reset state before fetching new passage
+			setTypedValue("");
 			const res = await fetch(
 				`/api/passages/action?difficulty=${difficulty.toLowerCase()}`,
 				{ cache: "no-store" },

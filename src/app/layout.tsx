@@ -1,3 +1,5 @@
+import { useGSAP } from "@gsap/react";
+import gsap from "gsap";
 import type { Metadata } from "next";
 import { GameProvider } from "@/components/GameContext";
 import "./globals.css";
@@ -18,6 +20,11 @@ export default function RootLayout({
 }: Readonly<{
 	children: React.ReactNode;
 }>) {
+	gsap.registerPlugin(useGSAP);
+	gsap.defaults({
+		force3D: true, // GPU acceleration
+		lazy: false, // Immediate rendering
+	});
 	return (
 		<html lang="en">
 			<body className="font-bold min-h-screen relative group overflow-hidden bg-FemNeutral-900  text-FemNeutral-000 m-auto max-w-7xl">

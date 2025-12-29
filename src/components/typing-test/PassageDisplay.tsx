@@ -6,8 +6,6 @@ import { useRef } from "react";
 import { useGame } from "../GameContext";
 import CharacterSpan from "./CharacterSpan";
 
-gsap.registerPlugin(useGSAP);
-
 const PassageDisplay: React.FC = () => {
 	const game = useGame();
 	const containerRef = useRef<HTMLDivElement>(null);
