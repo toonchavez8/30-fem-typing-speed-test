@@ -62,8 +62,6 @@ const TypingTestContainer: React.FC = () => {
         {/* Passage display area */}
         <div className="relative">
           <PassageDisplay />
-          {game.testStatus !== "completed" && <TypingInput />}
-          {game.testStatus === "idle" && <StartOverlay />}
         </div>
 
         {/* Results Modal - positioned absolute within this container */}
