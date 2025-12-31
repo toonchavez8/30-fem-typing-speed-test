@@ -1,1815 +1,1515 @@
 # Typing Test Implementation Guide
 
-This guide provides step-by-step instructions to implement the UI enhancements and animations for the typing test application.
+> **Important**: This document contains logic design and documentation only. No `.ts` or `.tsx` files should be modified based on this guide until explicitly authorized.
 
 ---
 
 ## Table of Contents
 
-1. [Prerequisites - Install GSAP](#step-1-prerequisites---install-gsap)
-2. [Dynamic Color Coding for Stats](#step-2-dynamic-color-coding-for-stats)
-3. [GSAP Color Change Animations](#step-3-gsap-color-change-animations)
-4. [Character Impact Shake Animation](#step-4-character-impact-shake-animation)
-5. [Start Typing Overlay Button](#step-5-start-typing-overlay-button)
-6. [Confetti Animation on Completion](#step-6-confetti-animation-on-completion)
-7. [Results Modal with GSAP Animations](#step-7-results-modal-with-gsap-animations)
-8. [New Passage Reset Behavior](#step-8-new-passage-reset-behavior)
+1. [Playwright Setup (Next.js DevTools Compatible)](#1-playwright-setup-nextjs-devtools-compatible)
+2. [Modal Exit Prevention Logic](#2-modal-exit-prevention-logic)
+3. [Modal Text Logic](#3-modal-text-logic)
+4. [Overlay Blur Behavior](#4-overlay-blur-behavior)
+5. [Playwright Tests](#5-playwright-tests)
 
 ---
 
-## Step 1: Prerequisites - Install GSAP
+## 1. Playwright Setup (Next.js DevTools Compatible)
 
-GSAP (GreenSock Animation Platform) is required for smooth animations. Install it first.
+### Why Playwright?
 
-### Terminal Command
+Playwright is the recommended E2E testing framework for Next.js applications because:
 
-```bash
-npm install gsap
-```
+- **Official Support**: Next.js 16+ includes built-in MCP (Model Context Protocol) integration with Playwright
+- **Cross-browser Testing**: Supports Chromium, Firefox, and WebKit
+- **Component Testing**: Allows testing React components in isolation
+- **Network Interception**: Can mock API responses for deterministic tests
+- **Accessibility Testing**: Built-in accessibility snapshot capabilities
 
-### Why GSAP?
+### Installation Steps
 
-GSAP provides high-performance animations with better control than CSS animations alone. It handles:
-- Smooth color transitions
-- Shake effects with decay
-- Fade in/out animations
-- Complex sequenced animations
-
----
-
-## Step 1.1: GSAP Best Practices for React (GSAP-Master Recommended)
-
-> **⚠️ IMPORTANT**: The following section contains GSAP-Master validated patterns for React. These patterns ensure proper cleanup, prevent memory leaks, and guarantee 60fps performance.
-
-### Install GSAP with React Hook Package
-
-For optimal React integration, install the official GSAP React hook:
+#### Step 1: Install Playwright and Dependencies
 
 ```bash
-npm install gsap @gsap/react
+# Install Playwright with test runner
+npm install -D @playwright/test
+
+# Install browsers (Chromium, Firefox, WebKit)
+npx playwright install
 ```
 
-### Why `@gsap/react`?
+**Why these packages?**
+- `@playwright/test` provides the test runner, assertions, and fixtures
+- Browser binaries are installed separately to keep the package lightweight
 
-The `useGSAP` hook from `@gsap/react` provides:
-- **Automatic cleanup** when components unmount
-- **Proper scoping** for animations within a container
-- **Memory leak prevention** - kills all animations automatically
-- **React 18+ compatibility** with strict mode
+#### Step 2: Create Playwright Configuration
 
-### GSAP Setup Pattern for React Components
+**Before**: No configuration exists
 
-```tsx
-// Recommended GSAP setup for React components
-import { useRef } from "react";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
+**After**: Create `playwright.config.ts` in the project root
 
-// Register the hook with GSAP (do this once, typically in a layout or provider)
-gsap.registerPlugin(useGSAP);
+```typescript
+// playwright.config.ts
+import { defineConfig, devices } from '@playwright/test';
 
-// Performance defaults - apply once at app initialization
-gsap.defaults({ 
-  force3D: true,  // GPU acceleration for 60fps
-  lazy: false     // Immediate rendering
+export default defineConfig({
+  // Directory containing test files
+  testDir: './e2e',
+  
+  // Run tests in parallel for faster execution
+  fullyParallel: true,
+  
+  // Fail the build on CI if test.only is left in source code
+  forbidOnly: !!process.env.CI,
+  
+  // Retry failed tests on CI only (flaky test protection)
+  retries: process.env.CI ? 2 : 0,
+  
+  // Number of parallel workers
+  workers: process.env.CI ? 1 : undefined,
+  
+  // Reporter configuration
+  reporter: [
+    ['html', { open: 'never' }],
+    ['list']
+  ],
+  
+  // Shared settings for all projects
+  use: {
+    // Base URL for navigation - matches Next.js dev server
+    baseURL: 'http://localhost:3000',
+    
+    // Capture screenshot on failure
+    screenshot: 'only-on-failure',
+    
+    // Capture trace on first retry
+    trace: 'on-first-retry',
+    
+    // Respect prefers-reduced-motion for animation tests
+    reducedMotion: 'no-preference',
+  },
+
+  // Configure projects for major browsers
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
+  ],
+
+  // Run Next.js dev server before starting tests
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://localhost:3000',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120 * 1000, // 2 minutes for Next.js to start
+  },
 });
-
-export default function AnimatedComponent() {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // useGSAP automatically handles cleanup on unmount
-  useGSAP(() => {
-    // All animations here are scoped to containerRef
-    gsap.from(".animate-element", {
-      y: 50,
-      opacity: 0,
-      duration: 1,
-      ease: "power3.out",
-      force3D: true  // Always include for smooth animations
-    });
-  }, { scope: containerRef }); // Scope animations to container
-
-  return (
-    <div ref={containerRef}>
-      <div className="animate-element">Content</div>
-    </div>
-  );
-}
 ```
 
-### Performance CSS (Required for 60fps)
+**Why each configuration choice:**
 
-Add this CSS to ensure smooth animations:
+| Option | Value | Reason |
+|--------|-------|--------|
+| `testDir: './e2e'` | Separate from unit tests | Clear separation of concerns; E2E tests have different patterns |
+| `fullyParallel: true` | Enabled | Speeds up test execution; each test is isolated |
+| `forbidOnly: !!process.env.CI` | CI-only | Prevents accidental `.only` commits breaking CI |
+| `retries: process.env.CI ? 2 : 0` | 2 on CI | Handles flaky network/timing issues in CI |
+| `baseURL` | localhost:3000 | Matches Next.js default dev server port |
+| `screenshot: 'only-on-failure'` | Failure only | Saves disk space; screenshots help debugging |
+| `trace: 'on-first-retry'` | First retry | Captures detailed timeline for flaky test analysis |
+| `webServer.command` | `npm run dev` | Auto-starts Next.js; no manual server management |
+| `webServer.reuseExistingServer` | Not on CI | Dev: reuse existing server; CI: fresh instance |
 
-```css
-/* Add to globals.css for animation performance */
-.animated-element {
-  will-change: transform, opacity;
-  backface-visibility: hidden;
-  transform: translateZ(0); /* Force GPU layer */
-}
+#### Step 3: Create Test Directory Structure
 
-/* Respect user accessibility preferences */
-@media (prefers-reduced-motion: reduce) {
-  .animated-element {
-    animation: none !important;
-    transition: none !important;
+**Before**: No test structure
+
+**After**: Create the following structure
+
+```
+e2e/
+├── fixtures/
+│   └── test-fixtures.ts      # Custom fixtures and page objects
+├── tests/
+│   ├── modal.spec.ts         # Modal behavior tests
+│   ├── overlay.spec.ts       # Start overlay tests
+│   └── keyboard.spec.ts      # Keyboard shortcut tests
+└── utils/
+    └── test-helpers.ts       # Shared test utilities
+```
+
+**Why this structure?**
+- `fixtures/`: Reusable test setup (e.g., pre-typed text state)
+- `tests/`: Grouped by feature for maintainability
+- `utils/`: Shared helpers reduce code duplication
+
+#### Step 4: Add npm Scripts
+
+**Before** (current package.json scripts):
+```json
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "biome check .",
+    "format": "biome format . --write"
   }
 }
 ```
 
-### Alternative: Using useEffect (Current Implementation)
+**After** (with Playwright scripts):
+```json
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "biome check .",
+    "format": "biome format . --write",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:report": "playwright show-report"
+  }
+}
+```
 
-If you prefer `useEffect` over `useGSAP`, you **MUST** manually handle cleanup:
+**Why each script?**
+- `test:e2e`: Standard test run for CI/CD
+- `test:e2e:ui`: Visual UI mode for interactive debugging
+- `test:e2e:debug`: Step-through debugging with DevTools
+- `test:e2e:report`: View HTML test report
 
-```tsx
-import { useEffect, useRef } from "react";
-import gsap from "gsap";
+#### Step 5: Create Base Test Fixture
 
-function MyComponent() {
-  const elementRef = useRef<HTMLElement>(null);
+**Before**: No fixtures
 
-  useEffect(() => {
-    // Create the animation context for cleanup
-    const ctx = gsap.context(() => {
-      gsap.fromTo(elementRef.current, 
-        { scale: 1.2 }, 
-        { scale: 1, duration: 0.3, ease: "back.out(1.7)", force3D: true }
-      );
+**After**: Create `e2e/fixtures/test-fixtures.ts`
+
+```typescript
+// e2e/fixtures/test-fixtures.ts
+import { test as base, expect } from '@playwright/test';
+
+// Extend base test with typing test-specific fixtures
+export const test = base.extend<{
+  // Fixture to wait for passage to load
+  loadedPage: void;
+  // Fixture to complete a typing test
+  completedTest: void;
+}>({
+  // Ensure passage is loaded before each test
+  loadedPage: async ({ page }, use) => {
+    await page.goto('/');
+    // Wait for passage text to appear (not loading state)
+    await page.waitForSelector('[data-testid="passage-text"]', {
+      state: 'visible',
+      timeout: 10000
     });
-
-    // CRITICAL: Clean up animations on unmount or dependency change
-    return () => ctx.revert();
-  }, [dependency]);
-
-  return <div ref={elementRef}>Animated content</div>;
-}
-```
-
-> **Note**: The `gsap.context()` API ensures all animations created within it are properly killed when `ctx.revert()` is called.
-
----
-
-## Step 2: Dynamic Color Coding for Stats
-
-### Overview
-
-The stats display (WPM, Accuracy, Time) should change colors based on values and test status:
-
-| Stat | Idle | Good | Medium | Poor |
-|------|------|------|--------|------|
-| Time | White | Yellow (running) | - | - |
-| Accuracy | White | Green (>90%) | Yellow (70-90%) | Red (<70%) |
-| WPM | White | Green (>40) | Yellow (20-40) | Red (<20) |
-
-### File: `src/components/statsContainter.tsx`
-
-#### Step 2.1: Add helper functions for color determination
-
-**Add these functions AFTER the imports and BEFORE the `StatsContainter` component:**
-
-```tsx
-// Add after the existing import
-import { useGame } from "./GameContext";
-
-// Color determination helpers
-function getTimeColor(testStatus: string): string {
-    if (testStatus === "idle" || testStatus === "ready") {
-        return "text-FemNeutral-000"; // White
-    }
-    return "text-FemYellow-400"; // Yellow when running or completed
-}
-
-function getAccuracyColor(accuracy: number, testStatus: string): string {
-    if (testStatus === "idle" || testStatus === "ready") {
-        return "text-FemNeutral-000"; // White
-    }
-    if (accuracy >= 90) return "text-FemGreen-500";  // Green
-    if (accuracy >= 70) return "text-FemYellow-400"; // Yellow
-    return "text-FemRed-500"; // Red
-}
-
-function getWpmColor(wpm: number, testStatus: string): string {
-    if (testStatus === "idle" || testStatus === "ready") {
-        return "text-FemNeutral-000"; // White
-    }
-    if (wpm > 40) return "text-FemGreen-500";  // Green
-    if (wpm >= 20) return "text-FemYellow-400"; // Yellow
-    return "text-FemRed-500"; // Red
-}
-```
-
-#### Step 2.2: Update the stats display to use dynamic colors
-
-**BEFORE (lines ~77-95):**
-```tsx
-<dl className="flex gap-6 text-lg ">
-    <div className="flex aligns-center justify-center gap-2.5">
-        <dt className="font-medium text-gray-400">WPM:</dt>
-        <dd className=" border-r border-gray-700 pr-4">{currentWpm}</dd>
-    </div>
-
-    <div className="flex aligns-center justify-center gap-2.5">
-        <dt className="font-medium text-gray-400">Accuracy</dt>
-        <dd className="border-r border-gray-700 pr-4">
-            {currentAccuracy}%
-        </dd>
-    </div>
-
-    <div className="flex aligns-center justify-center gap-2.5">
-        <dt className="font-medium text-gray-400">Time</dt>
-        <dd className="">{currentTime}</dd>
-    </div>
-</dl>
-```
-
-**AFTER:**
-```tsx
-<dl className="flex gap-6 text-lg ">
-    <div className="flex aligns-center justify-center gap-2.5">
-        <dt className="font-medium text-gray-400">WPM:</dt>
-        <dd className={`border-r border-gray-700 pr-4 transition-colors duration-300 ${getWpmColor(currentWpm, game.testStatus)}`}>
-            {currentWpm}
-        </dd>
-    </div>
-
-    <div className="flex aligns-center justify-center gap-2.5">
-        <dt className="font-medium text-gray-400">Accuracy</dt>
-        <dd className={`border-r border-gray-700 pr-4 transition-colors duration-300 ${getAccuracyColor(currentAccuracy, game.testStatus)}`}>
-            {currentAccuracy}%
-        </dd>
-    </div>
-
-    <div className="flex aligns-center justify-center gap-2.5">
-        <dt className="font-medium text-gray-400">Time</dt>
-        <dd className={`transition-colors duration-300 ${getTimeColor(game.testStatus)}`}>
-            {currentTime}
-        </dd>
-    </div>
-</dl>
-```
-
----
-
-## Step 3: GSAP Color Change Animations
-
-### Overview
-
-Add a subtle animation (scale pulse) when stats change color.
-
-### File: `src/components/statsContainter.tsx`
-
-#### Step 3.1: Update imports at the TOP of the file
-
-**BEFORE:**
-```tsx
-"use client";
-
-type Mode = "timed" | "passage";
-```
-
-**AFTER:**
-```tsx
-"use client";
-
-import { useEffect, useRef } from "react";
-import gsap from "gsap";
-
-type Mode = "timed" | "passage";
-```
-
----
-
-### Step 3.1.1: GSAP-Master Recommended Alternative (Best Practice)
-
-> **⚠️ GSAP BEST PRACTICE**: The above `useEffect` pattern works but the GSAP-recommended approach for React is to use `useGSAP` hook with `gsap.context()` for automatic cleanup. Below is the improved version:
-
-**GSAP-RECOMMENDED IMPORTS:**
-```tsx
-"use client";
-
-import { useRef } from "react";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
-
-// Register plugin once (can be done in a parent layout)
-gsap.registerPlugin(useGSAP);
-
-type Mode = "timed" | "passage";
-```
-
-**GSAP-RECOMMENDED ANIMATION PATTERN:**
-
-Instead of multiple `useEffect` hooks, use a single `useGSAP` with dependency tracking:
-
-```tsx
-const StatsContainter: React.FC<StatsContainterProps> = ({ /* props */ }) => {
-    const game = useGame();
-    const containerRef = useRef<HTMLDivElement>(null);
-    const wpmRef = useRef<HTMLElement>(null);
-    const accuracyRef = useRef<HTMLElement>(null);
-    const timeRef = useRef<HTMLElement>(null);
+    await use();
+  },
+  
+  // Complete a full typing test
+  completedTest: async ({ page }, use) => {
+    await page.goto('/');
+    await page.waitForSelector('[data-testid="passage-text"]');
     
-    // Track previous colors to detect changes
-    const prevColorsRef = useRef({
-        wpm: "",
-        accuracy: "",
-        time: ""
-    });
-
-    // Calculate current colors
-    const wpmColor = getWpmColor(currentWpm, game.testStatus);
-    const accuracyColor = getAccuracyColor(currentAccuracy, game.testStatus);
-    const timeColor = getTimeColor(game.testStatus);
-
-    // GSAP-Master recommended: useGSAP with proper scoping and cleanup
-    useGSAP(() => {
-        // Animate WPM on color change
-        if (prevColorsRef.current.wpm !== wpmColor && prevColorsRef.current.wpm !== "") {
-            gsap.fromTo(wpmRef.current, 
-                { scale: 1.2 }, 
-                { 
-                    scale: 1, 
-                    duration: 0.3, 
-                    ease: "back.out(1.7)",
-                    force3D: true,  // GPU acceleration
-                    clearProps: "scale"  // Clean up after animation
-                }
-            );
-        }
-        prevColorsRef.current.wpm = wpmColor;
-
-        // Animate Accuracy on color change
-        if (prevColorsRef.current.accuracy !== accuracyColor && prevColorsRef.current.accuracy !== "") {
-            gsap.fromTo(accuracyRef.current, 
-                { scale: 1.2 }, 
-                { 
-                    scale: 1, 
-                    duration: 0.3, 
-                    ease: "back.out(1.7)",
-                    force3D: true,
-                    clearProps: "scale"
-                }
-            );
-        }
-        prevColorsRef.current.accuracy = accuracyColor;
-
-        // Animate Time on color change
-        if (prevColorsRef.current.time !== timeColor && prevColorsRef.current.time !== "") {
-            gsap.fromTo(timeRef.current, 
-                { scale: 1.2 }, 
-                { 
-                    scale: 1, 
-                    duration: 0.3, 
-                    ease: "back.out(1.7)",
-                    force3D: true,
-                    clearProps: "scale"
-                }
-            );
-        }
-        prevColorsRef.current.time = timeColor;
-        
-    }, { 
-        scope: containerRef,
-        dependencies: [wpmColor, accuracyColor, timeColor]  // Re-run when colors change
-    });
-
-    // ... rest of component
-};
-```
-
-**Key Improvements:**
-- `force3D: true` - Enables GPU acceleration for 60fps animations
-- `clearProps: "scale"` - Cleans up inline styles after animation completes
-- `scope: containerRef` - Scopes all animations to prevent affecting other components
-- `dependencies` array - Properly triggers re-runs when colors change
-- **Automatic cleanup** - useGSAP handles cleanup on unmount
-
-#### Step 3.2: Add refs and animation logic inside the component
-
-**Inside the `StatsContainter` component, AFTER the existing variable declarations, ADD:**
-
-```tsx
-const StatsContainter: React.FC<StatsContainterProps> = ({
-    wpm,
-    accuracy,
-    time,
-    difficulty,
-    mode,
-    onDifficultyChange,
-    onModeChange,
-}) => {
-    const game = useGame();
-
-    // ADD THESE REFS
-    const wpmRef = useRef<HTMLElement>(null);
-    const accuracyRef = useRef<HTMLElement>(null);
-    const timeRef = useRef<HTMLElement>(null);
+    // Get passage text and type it
+    const passageText = await page.textContent('[data-testid="passage-text"]');
+    if (passageText) {
+      const input = page.locator('input[aria-label="Typing input"]');
+      await input.focus();
+      await input.fill(passageText);
+    }
     
-    // Track previous colors to detect changes
-    const prevColorsRef = useRef({
-        wpm: "",
-        accuracy: "",
-        time: ""
+    // Wait for modal to appear
+    await page.waitForSelector('[data-testid="results-modal"]', {
+      state: 'visible'
     });
-
-    // Existing code...
-    const currentWpm = wpm ?? game.wpm;
-    const currentAccuracy = accuracy ?? game.accuracy;
-    const currentTime = time ?? game.time;
-    const currentDifficulty = (difficulty ?? game.difficulty) as Difficulty;
-    const currentMode = (mode ?? game.mode) as Mode;
-
-    // ADD THESE: Calculate current colors
-    const wpmColor = getWpmColor(currentWpm, game.testStatus);
-    const accuracyColor = getAccuracyColor(currentAccuracy, game.testStatus);
-    const timeColor = getTimeColor(game.testStatus);
-
-    // ADD THESE: Animate on color change
-    useEffect(() => {
-        if (prevColorsRef.current.wpm !== wpmColor && prevColorsRef.current.wpm !== "") {
-            gsap.fromTo(wpmRef.current, 
-                { scale: 1.2 }, 
-                { scale: 1, duration: 0.3, ease: "back.out(1.7)" }
-            );
-        }
-        prevColorsRef.current.wpm = wpmColor;
-    }, [wpmColor]);
-
-    useEffect(() => {
-        if (prevColorsRef.current.accuracy !== accuracyColor && prevColorsRef.current.accuracy !== "") {
-            gsap.fromTo(accuracyRef.current, 
-                { scale: 1.2 }, 
-                { scale: 1, duration: 0.3, ease: "back.out(1.7)" }
-            );
-        }
-        prevColorsRef.current.accuracy = accuracyColor;
-    }, [accuracyColor]);
-
-    useEffect(() => {
-        if (prevColorsRef.current.time !== timeColor && prevColorsRef.current.time !== "") {
-            gsap.fromTo(timeRef.current, 
-                { scale: 1.2 }, 
-                { scale: 1, duration: 0.3, ease: "back.out(1.7)" }
-            );
-        }
-        prevColorsRef.current.time = timeColor;
-    }, [timeColor]);
-
-    // ... rest of the component
-```
-
----
-
-### Step 3.2.1: GSAP-Master Recommended useEffect Pattern (If Not Using useGSAP)
-
-> **⚠️ IMPORTANT**: If you continue using `useEffect` instead of `useGSAP`, you should wrap animations in `gsap.context()` for proper cleanup. Here's the corrected pattern:
-
-```tsx
-// GSAP-RECOMMENDED: Using useEffect with gsap.context() for cleanup
-useEffect(() => {
-    // Create context for cleanup
-    const ctx = gsap.context(() => {
-        if (prevColorsRef.current.wpm !== wpmColor && prevColorsRef.current.wpm !== "") {
-            gsap.fromTo(wpmRef.current, 
-                { scale: 1.2 }, 
-                { 
-                    scale: 1, 
-                    duration: 0.3, 
-                    ease: "back.out(1.7)",
-                    force3D: true,        // ADDED: GPU acceleration
-                    clearProps: "scale"   // ADDED: Clean up inline styles
-                }
-            );
-        }
-        prevColorsRef.current.wpm = wpmColor;
-    });
-
-    // CRITICAL: Return cleanup function
-    return () => ctx.revert();
-}, [wpmColor]);
-
-useEffect(() => {
-    const ctx = gsap.context(() => {
-        if (prevColorsRef.current.accuracy !== accuracyColor && prevColorsRef.current.accuracy !== "") {
-            gsap.fromTo(accuracyRef.current, 
-                { scale: 1.2 }, 
-                { 
-                    scale: 1, 
-                    duration: 0.3, 
-                    ease: "back.out(1.7)",
-                    force3D: true,
-                    clearProps: "scale"
-                }
-            );
-        }
-        prevColorsRef.current.accuracy = accuracyColor;
-    });
-
-    return () => ctx.revert();
-}, [accuracyColor]);
-
-useEffect(() => {
-    const ctx = gsap.context(() => {
-        if (prevColorsRef.current.time !== timeColor && prevColorsRef.current.time !== "") {
-            gsap.fromTo(timeRef.current, 
-                { scale: 1.2 }, 
-                { 
-                    scale: 1, 
-                    duration: 0.3, 
-                    ease: "back.out(1.7)",
-                    force3D: true,
-                    clearProps: "scale"
-                }
-            );
-        }
-        prevColorsRef.current.time = timeColor;
-    });
-
-    return () => ctx.revert();
-}, [timeColor]);
-```
-
-**Why This Matters:**
-- `gsap.context()` groups animations together for batch cleanup
-- `ctx.revert()` kills all animations AND reverts DOM changes
-- `force3D: true` enables GPU hardware acceleration for smooth 60fps
-- `clearProps` removes inline styles after animation preventing CSS conflicts
-
-#### Step 3.3: Attach refs to the dd elements
-
-**Update the `<dd>` elements to include refs:**
-
-```tsx
-<dd 
-    ref={wpmRef}
-    className={`border-r border-gray-700 pr-4 transition-colors duration-300 ${wpmColor}`}
->
-    {currentWpm}
-</dd>
-
-<dd 
-    ref={accuracyRef}
-    className={`border-r border-gray-700 pr-4 transition-colors duration-300 ${accuracyColor}`}
->
-    {currentAccuracy}%
-</dd>
-
-<dd 
-    ref={timeRef}
-    className={`transition-colors duration-300 ${timeColor}`}
->
-    {currentTime}
-</dd>
-```
-
----
-
-## Step 4: Character Impact Shake Animation
-
-### Overview
-
-Add a subtle shake effect to the passage display when the user types with high accuracy (>90%) for more than 5 seconds and has typed more than 20 characters.
-
-### File: `src/components/typing-test/PassageDisplay.tsx`
-
-**BEFORE (entire file):**
-```tsx
-"use client";
-
-import { useGame } from "../GameContext";
-import CharacterSpan from "./CharacterSpan";
-
-const PassageDisplay: React.FC = () => {
-    const game = useGame();
-
-    if (!game.passage) return null;
-
-    const characters = game.passage.text.split("");
-
-    return (
-        <div className="text-2xl md:text-3xl leading-relaxed font-medium  w-full">
-            {characters.map((char, index) => {
-                const charState = game.characterStates[index];
-                const isCursor = index === game.cursorIndex;
-
-                return (
-                    <CharacterSpan
-                        key={`${index}-${char}`}
-                        character={char}
-                        state={charState?.state || "untyped"}
-                        isCursor={isCursor}
-                        index={index}
-                    />
-                );
-            })}
-        </div>
-    );
-};
-
-export default PassageDisplay;
-```
-
-**AFTER (entire file):**
-```tsx
-"use client";
-
-import { useEffect, useRef } from "react";
-import gsap from "gsap";
-import { useGame } from "../GameContext";
-import CharacterSpan from "./CharacterSpan";
-
-const PassageDisplay: React.FC = () => {
-    const game = useGame();
-    const containerRef = useRef<HTMLDivElement>(null);
-    const highAccuracyStartRef = useRef<number | null>(null);
-    const prevTypedLengthRef = useRef(0);
-
-    // Track high accuracy duration
-    useEffect(() => {
-        if (game.accuracy >= 90 && game.testStatus === "running") {
-            if (highAccuracyStartRef.current === null) {
-                highAccuracyStartRef.current = Date.now();
-            }
-        } else {
-            highAccuracyStartRef.current = null;
-        }
-    }, [game.accuracy, game.testStatus]);
-
-    // Shake effect on character typed (with conditions)
-    useEffect(() => {
-        const currentLength = game.typedValue.length;
-        const hasTypedNewChar = currentLength > prevTypedLengthRef.current;
-        prevTypedLengthRef.current = currentLength;
-
-        if (!hasTypedNewChar || !containerRef.current) return;
-
-        // Check conditions: >90% accuracy, >5 seconds at high accuracy, >20 chars typed
-        const highAccuracyDuration = highAccuracyStartRef.current 
-            ? (Date.now() - highAccuracyStartRef.current) / 1000 
-            : 0;
-
-        if (
-            game.accuracy >= 90 && 
-            highAccuracyDuration > 5 && 
-            currentLength > 20
-        ) {
-            // Micro-shake with decay
-            gsap.fromTo(
-                containerRef.current,
-                { x: -1 },
-                { 
-                    x: 0, 
-                    duration: 0.1, 
-                    ease: "elastic.out(1, 0.3)",
-                    overwrite: true
-                }
-            );
-        }
-    }, [game.typedValue, game.accuracy]);
-
-    // Reset tracking when test resets
-    useEffect(() => {
-        if (game.testStatus === "ready" || game.testStatus === "idle") {
-            highAccuracyStartRef.current = null;
-            prevTypedLengthRef.current = 0;
-        }
-    }, [game.testStatus]);
-
-    if (!game.passage) return null;
-
-    const characters = game.passage.text.split("");
-
-    return (
-        <div 
-            ref={containerRef}
-            className="text-2xl md:text-3xl leading-relaxed font-medium w-full"
-        >
-            {characters.map((char, index) => {
-                const charState = game.characterStates[index];
-                const isCursor = index === game.cursorIndex;
-
-                return (
-                    <CharacterSpan
-                        key={`${index}-${char}`}
-                        character={char}
-                        state={charState?.state || "untyped"}
-                        isCursor={isCursor}
-                        index={index}
-                    />
-                );
-            })}
-        </div>
-    );
-};
-
-export default PassageDisplay;
-```
-
----
-
-### Step 4.1: GSAP-Master Recommended Pattern for PassageDisplay
-
-> **⚠️ GSAP BEST PRACTICE**: The shake animation above works but can be improved with proper cleanup and GPU acceleration. Below is the optimized version:
-
-**GSAP-RECOMMENDED ALTERNATIVE (Using useGSAP):**
-
-```tsx
-"use client";
-
-import { useRef } from "react";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
-import { useGame } from "../GameContext";
-import CharacterSpan from "./CharacterSpan";
-
-// Register once at app level if not already done
-gsap.registerPlugin(useGSAP);
-
-const PassageDisplay: React.FC = () => {
-    const game = useGame();
-    const containerRef = useRef<HTMLDivElement>(null);
-    const highAccuracyStartRef = useRef<number | null>(null);
-    const prevTypedLengthRef = useRef(0);
-
-    // Using useGSAP for automatic cleanup and proper React integration
-    useGSAP(() => {
-        const currentLength = game.typedValue.length;
-        const hasTypedNewChar = currentLength > prevTypedLengthRef.current;
-        prevTypedLengthRef.current = currentLength;
-
-        // Track high accuracy duration
-        if (game.accuracy >= 90 && game.testStatus === "running") {
-            if (highAccuracyStartRef.current === null) {
-                highAccuracyStartRef.current = Date.now();
-            }
-        } else {
-            highAccuracyStartRef.current = null;
-        }
-
-        // Reset tracking when test resets
-        if (game.testStatus === "ready" || game.testStatus === "idle") {
-            highAccuracyStartRef.current = null;
-            prevTypedLengthRef.current = 0;
-            return; // Exit early, no animation needed
-        }
-
-        if (!hasTypedNewChar || !containerRef.current) return;
-
-        // Check conditions: >90% accuracy, >5 seconds at high accuracy, >20 chars typed
-        const highAccuracyDuration = highAccuracyStartRef.current 
-            ? (Date.now() - highAccuracyStartRef.current) / 1000 
-            : 0;
-
-        if (
-            game.accuracy >= 90 && 
-            highAccuracyDuration > 5 && 
-            currentLength > 20
-        ) {
-            // GSAP-OPTIMIZED: Micro-shake with GPU acceleration
-            gsap.fromTo(
-                containerRef.current,
-                { x: -1 },
-                { 
-                    x: 0, 
-                    duration: 0.1, 
-                    ease: "elastic.out(1, 0.3)",
-                    overwrite: true,       // Kill any existing animations
-                    force3D: true,         // ADDED: GPU acceleration
-                    clearProps: "x"        // ADDED: Clean up after animation
-                }
-            );
-        }
-    }, { 
-        scope: containerRef,
-        dependencies: [game.typedValue, game.accuracy, game.testStatus]
-    });
-
-    if (!game.passage) return null;
-
-    const characters = game.passage.text.split("");
-
-    return (
-        <div 
-            ref={containerRef}
-            className="text-2xl md:text-3xl leading-relaxed font-medium w-full animated-element"
-        >
-            {characters.map((char, index) => {
-                const charState = game.characterStates[index];
-                const isCursor = index === game.cursorIndex;
-
-                return (
-                    <CharacterSpan
-                        key={`${index}-${char}`}
-                        character={char}
-                        state={charState?.state || "untyped"}
-                        isCursor={isCursor}
-                        index={index}
-                    />
-                );
-            })}
-        </div>
-    );
-};
-
-export default PassageDisplay;
-```
-
-**Key Improvements:**
-- Uses `useGSAP` for automatic animation cleanup
-- `force3D: true` enables hardware acceleration
-- `clearProps: "x"` removes inline transform after animation
-- `overwrite: true` prevents animation queue buildup
-- Added `animated-element` class for CSS performance optimizations
-- Single hook manages all state tracking and animation
-
----
-
-## Step 5: Start Typing Overlay Button
-
-### Overview
-
-Create a blue button overlay that says "Start typing test" with "or click the text and start typing" below it. This button:
-- Blurs the text area behind it when visible
-- Fades out when user starts typing
-- Fades back in when test is reset or new passage loads
-
-### File: `src/components/typing-test/StartOverlay.tsx` (CREATE NEW FILE)
-
-```tsx
-"use client";
-
-import { useEffect, useRef } from "react";
-import gsap from "gsap";
-import { useGame } from "../GameContext";
-
-const StartOverlay: React.FC = () => {
-    const game = useGame();
-    const overlayRef = useRef<HTMLDivElement>(null);
-    const isVisible = game.testStatus === "ready" || game.testStatus === "idle";
-
-    useEffect(() => {
-        if (!overlayRef.current) return;
-
-        if (isVisible) {
-            // Fade in
-            gsap.to(overlayRef.current, {
-                opacity: 1,
-                duration: 0.3,
-                ease: "power2.out",
-                display: "flex"
-            });
-        } else {
-            // Fade out
-            gsap.to(overlayRef.current, {
-                opacity: 0,
-                duration: 0.3,
-                ease: "power2.in",
-                onComplete: () => {
-                    if (overlayRef.current) {
-                        overlayRef.current.style.display = "none";
-                    }
-                }
-            });
-        }
-    }, [isVisible]);
-
-    const handleClick = () => {
-        // Focus the hidden input to start typing
-        const input = document.querySelector('input[aria-label="Typing input"]') as HTMLInputElement;
-        input?.focus();
-    };
-
-    return (
-        <div
-            ref={overlayRef}
-            className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-FemNeutral-900/80 backdrop-blur-sm rounded-lg"
-            style={{ opacity: isVisible ? 1 : 0, display: isVisible ? "flex" : "none" }}
-        >
-            <button
-                onClick={handleClick}
-                className="px-8 py-4 bg-FemBlue-600 hover:bg-FemBlue-400 text-white text-xl font-semibold rounded-lg transition-colors shadow-lg shadow-FemBlue-600/30"
-                type="button"
-            >
-                Start typing test
-            </button>
-            <p className="mt-3 text-FemNeutral-400 text-sm">
-                or click the text and start typing
-            </p>
-        </div>
-    );
-};
-
-export default StartOverlay;
-```
-
----
-
-### Step 5.1: GSAP-Master Recommended Pattern for StartOverlay
-
-> **⚠️ GSAP BEST PRACTICE**: The overlay animation benefits from proper cleanup and the `useGSAP` hook pattern. Here's the optimized version with timeline for better sequencing:
-
-**GSAP-RECOMMENDED ALTERNATIVE:**
-
-```tsx
-"use client";
-
-import { useRef } from "react";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
-import { useGame } from "../GameContext";
-
-// Register once at app level if not already done
-gsap.registerPlugin(useGSAP);
-
-const StartOverlay: React.FC = () => {
-    const game = useGame();
-    const overlayRef = useRef<HTMLDivElement>(null);
-    const buttonRef = useRef<HTMLButtonElement>(null);
-    const textRef = useRef<HTMLParagraphElement>(null);
-    const isVisible = game.testStatus === "ready" || game.testStatus === "idle";
-
-    // GSAP-Master recommended: useGSAP with timeline for sequenced animations
-    useGSAP(() => {
-        if (!overlayRef.current) return;
-
-        // Create a timeline for better control
-        const tl = gsap.timeline();
-
-        if (isVisible) {
-            // Set initial state before animating in
-            gsap.set(overlayRef.current, { display: "flex" });
-            
-            // Fade in with staggered button and text
-            tl.to(overlayRef.current, {
-                opacity: 1,
-                duration: 0.3,
-                ease: "power2.out",
-                force3D: true
-            })
-            .from(buttonRef.current, {
-                y: 10,
-                opacity: 0,
-                duration: 0.3,
-                ease: "back.out(1.7)",
-                force3D: true,
-                clearProps: "y"  // Clean up transform after animation
-            }, "-=0.15")
-            .from(textRef.current, {
-                y: 5,
-                opacity: 0,
-                duration: 0.2,
-                ease: "power2.out",
-                force3D: true,
-                clearProps: "y"
-            }, "-=0.1");
-        } else {
-            // Fade out
-            tl.to(overlayRef.current, {
-                opacity: 0,
-                duration: 0.3,
-                ease: "power2.in",
-                force3D: true,
-                onComplete: () => {
-                    if (overlayRef.current) {
-                        gsap.set(overlayRef.current, { display: "none" });
-                    }
-                }
-            });
-        }
-
-        // Return cleanup function - timeline will be killed automatically by useGSAP
-        return () => {
-            tl.kill();
-        };
-    }, { 
-        scope: overlayRef,
-        dependencies: [isVisible]
-    });
-
-    const handleClick = () => {
-        // Focus the hidden input to start typing
-        const input = document.querySelector('input[aria-label="Typing input"]') as HTMLInputElement;
-        input?.focus();
-    };
-
-    return (
-        <div
-            ref={overlayRef}
-            className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-FemNeutral-900/80 backdrop-blur-sm rounded-lg animated-element"
-            style={{ opacity: isVisible ? 1 : 0, display: isVisible ? "flex" : "none" }}
-        >
-            <button
-                ref={buttonRef}
-                onClick={handleClick}
-                className="px-8 py-4 bg-FemBlue-600 hover:bg-FemBlue-400 text-white text-xl font-semibold rounded-lg transition-colors shadow-lg shadow-FemBlue-600/30"
-                type="button"
-            >
-                Start typing test
-            </button>
-            <p ref={textRef} className="mt-3 text-FemNeutral-400 text-sm">
-                or click the text and start typing
-            </p>
-        </div>
-    );
-};
-
-export default StartOverlay;
-```
-
-**Key Improvements:**
-- Uses `gsap.timeline()` for sequenced animations (button → text)
-- `useGSAP` handles automatic cleanup when component unmounts
-- `force3D: true` on all animations for GPU acceleration
-- `clearProps` removes transforms after animation
-- Staggered entrance animation for polish (button slides in before text)
-- Refs on individual elements for targeted animations
-- Added `animated-element` class for CSS performance optimizations
-
-### File: `src/components/typing-test/TypingTestContainter.tsx`
-
-**Add the import at the top:**
-```tsx
-import StartOverlay from "./StartOverlay";
-```
-
-**Update the Idle/Ready state section:**
-
-**BEFORE:**
-```tsx
-// Idle/Ready state - show instructions
-if (game.testStatus === "idle" || game.testStatus === "ready") {
-    return (
-        <div className="w-full  mx-auto mt-8 text-pretty">
-            <div className="relative">
-                <PassageDisplay />
-                <TypingInput />
-            </div>
-            <div className="mt-6 text-center">
-                <p className="text-gray-400 text-sm">
-                    Click the text above and start typing to begin
-                </p>
-            </div>
-        </div>
-    );
-}
-```
-
-**AFTER:**
-```tsx
-// Idle/Ready state - show overlay
-if (game.testStatus === "idle" || game.testStatus === "ready") {
-    return (
-        <div className="w-full mx-auto mt-8 text-pretty">
-            <div className="relative">
-                <PassageDisplay />
-                <TypingInput />
-                <StartOverlay />
-            </div>
-        </div>
-    );
-}
-```
-
----
-
-## Step 6: Confetti Animation on Completion
-
-### Overview
-
-Create a canvas-based confetti animation that plays for 3 seconds when the user completes a test.
-
-### File: `src/components/typing-test/Confetti.tsx` (CREATE NEW FILE)
-
-```tsx
-"use client";
-
-import { useEffect, useRef, useCallback } from "react";
-
-interface ConfettiProps {
-    isActive: boolean;
-    duration?: number; // in milliseconds
-}
-
-interface Particle {
-    x: number;
-    y: number;
-    vx: number;
-    vy: number;
-    color: string;
-    size: number;
-    rotation: number;
-    rotationSpeed: number;
-}
-
-const COLORS = ["#4ca6ff", "#4dd67b", "#f4dc73", "#d64d5b", "#177dff", "#ffffff"];
-
-const Confetti: React.FC<ConfettiProps> = ({ isActive, duration = 3000 }) => {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const particlesRef = useRef<Particle[]>([]);
-    const animationRef = useRef<number | null>(null);
-    const startTimeRef = useRef<number | null>(null);
-
-    const createParticle = useCallback((canvas: HTMLCanvasElement): Particle => {
-        return {
-            x: Math.random() * canvas.width,
-            y: -10,
-            vx: (Math.random() - 0.5) * 8,
-            vy: Math.random() * 3 + 2,
-            color: COLORS[Math.floor(Math.random() * COLORS.length)],
-            size: Math.random() * 8 + 4,
-            rotation: Math.random() * 360,
-            rotationSpeed: (Math.random() - 0.5) * 10
-        };
-    }, []);
-
-    useEffect(() => {
-        if (!isActive || !canvasRef.current) {
-            if (animationRef.current) {
-                cancelAnimationFrame(animationRef.current);
-                animationRef.current = null;
-            }
-            return;
-        }
-
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        // Set canvas size
-        const resizeCanvas = () => {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        };
-        resizeCanvas();
-        window.addEventListener("resize", resizeCanvas);
-
-        // Initialize particles
-        particlesRef.current = Array.from({ length: 150 }, () => createParticle(canvas));
-        startTimeRef.current = Date.now();
-
-        const animate = () => {
-            const elapsed = Date.now() - (startTimeRef.current || 0);
-            
-            if (elapsed > duration) {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                return;
-            }
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Add new particles periodically
-            if (elapsed < duration * 0.7 && Math.random() > 0.7) {
-                particlesRef.current.push(createParticle(canvas));
-            }
-
-            particlesRef.current = particlesRef.current.filter((p) => {
-                // Update position
-                p.x += p.vx;
-                p.y += p.vy;
-                p.vy += 0.1; // Gravity
-                p.rotation += p.rotationSpeed;
-
-                // Draw particle
-                ctx.save();
-                ctx.translate(p.x, p.y);
-                ctx.rotate((p.rotation * Math.PI) / 180);
-                ctx.fillStyle = p.color;
-                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
-                ctx.restore();
-
-                // Keep particle if still visible
-                return p.y < canvas.height + 20;
-            });
-
-            animationRef.current = requestAnimationFrame(animate);
-        };
-
-        animate();
-
-        return () => {
-            window.removeEventListener("resize", resizeCanvas);
-            if (animationRef.current) {
-                cancelAnimationFrame(animationRef.current);
-            }
-        };
-    }, [isActive, duration, createParticle]);
-
-    if (!isActive) return null;
-
-    return (
-        <canvas
-            ref={canvasRef}
-            className="fixed inset-0 pointer-events-none z-[100]"
-            style={{ width: "100vw", height: "100vh" }}
-        />
-    );
-};
-
-export default Confetti;
-```
-
-### File: `src/components/typing-test/TypingTestContainter.tsx`
-
-**Add the import:**
-```tsx
-import Confetti from "./Confetti";
-```
-
-**Add state for confetti (near other useState declarations):**
-```tsx
-const [showConfetti, setShowConfetti] = useState(false);
-```
-
-**Update the completion effect:**
-
-**BEFORE:**
-```tsx
-// Show modal when test completes
-useEffect(() => {
-    if (game.testStatus === "completed") {
-        setShowResultsModal(true);
-    }
-}, [game.testStatus]);
-```
-
-**AFTER:**
-```tsx
-// Show modal and confetti when test completes
-useEffect(() => {
-    if (game.testStatus === "completed") {
-        setShowResultsModal(true);
-        setShowConfetti(true);
-        
-        // Stop confetti after 3 seconds
-        const timer = setTimeout(() => {
-            setShowConfetti(false);
-        }, 3000);
-        
-        return () => clearTimeout(timer);
-    }
-}, [game.testStatus]);
-```
-
-**Add Confetti component at the start of the return JSX (wrap everything in a fragment if needed):**
-
-```tsx
-return (
-    <>
-        <Confetti isActive={showConfetti} duration={3000} />
-        {/* ... rest of the component JSX */}
-    </>
-);
-```
-
----
-
-## Step 7: Results Modal with GSAP Animations
-
-### Overview
-
-Update the existing Results Modal to:
-- Have smooth fade-in animation when appearing
-- Have fade-out animation when closing
-- Only overlay the text area and stats container (not header/footer)
-
-### File: `src/components/typing-test/ResultsModel.tsx`
-
-**BEFORE (top section):**
-```tsx
-"use client";
-
-import { useGame } from "../GameContext";
-
-interface ResultsModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-}
-
-const ResultsModal: React.FC<ResultsModalProps> = ({ isOpen, onClose }) => {
-    const game = useGame();
-
-    if (!isOpen) return null;
-
-    const isNewBest = game.wpm > (game.statistics.bestWPM || 0);
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-            {/* Backdrop */}
-            <button
-                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-                onClick={onClose}
-                type="button"
-            />
-```
-
-**AFTER (top section with GSAP):**
-```tsx
-"use client";
-
-import { useEffect, useRef, useState } from "react";
-import gsap from "gsap";
-import { useGame } from "../GameContext";
-
-interface ResultsModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-}
-
-const ResultsModal: React.FC<ResultsModalProps> = ({ isOpen, onClose }) => {
-    const game = useGame();
-    const backdropRef = useRef<HTMLDivElement>(null);
-    const modalRef = useRef<HTMLDivElement>(null);
-    const [shouldRender, setShouldRender] = useState(false);
-
-    // Handle render state
-    useEffect(() => {
-        if (isOpen) {
-            setShouldRender(true);
-        }
-    }, [isOpen]);
-
-    // Animate in when modal opens
-    useEffect(() => {
-        if (!shouldRender) return;
-
-        const backdrop = backdropRef.current;
-        const modal = modalRef.current;
-
-        if (isOpen && backdrop && modal) {
-            // Animate in
-            gsap.fromTo(
-                backdrop,
-                { opacity: 0 },
-                { opacity: 1, duration: 0.3, ease: "power2.out" }
-            );
-            gsap.fromTo(
-                modal,
-                { opacity: 0, scale: 0.9, y: 20 },
-                { opacity: 1, scale: 1, y: 0, duration: 0.4, ease: "back.out(1.7)" }
-            );
-        }
-    }, [isOpen, shouldRender]);
-
-    // Handle close with animation
-    const handleClose = () => {
-        const backdrop = backdropRef.current;
-        const modal = modalRef.current;
-
-        if (backdrop && modal) {
-            // Animate out
-            gsap.to(modal, {
-                opacity: 0,
-                scale: 0.9,
-                y: 20,
-                duration: 0.25,
-                ease: "power2.in"
-            });
-            gsap.to(backdrop, {
-                opacity: 0,
-                duration: 0.25,
-                ease: "power2.in",
-                onComplete: () => {
-                    setShouldRender(false);
-                    onClose();
-                }
-            });
-        } else {
-            onClose();
-        }
-    };
-
-    if (!shouldRender) return null;
-
-    const isNewBest = game.wpm > (game.statistics.bestWPM || 0);
-
-    return (
-        // Changed from "fixed" to "absolute" to only overlay the parent container
-        <div 
-            ref={backdropRef}
-            className="absolute inset-0 z-50 flex items-center justify-center"
-        >
-            {/* Backdrop */}
-            <button
-                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-                onClick={handleClose}
-                type="button"
-                aria-label="Close modal"
-            />
-
-            {/* Modal Content - add ref */}
-            <div 
-                ref={modalRef}
-                className="relative z-10 w-full max-w-md mx-4 p-6 bg-gray-800 rounded-xl border border-gray-700 shadow-2xl"
-            >
-```
-
----
-
-### Step 7.1: GSAP-Master Recommended Pattern for ResultsModal
-
-> **⚠️ GSAP BEST PRACTICE**: The ResultsModal can be improved with `useGSAP` for proper cleanup and a timeline for coordinated animations. Here's the optimized version:
-
-**GSAP-RECOMMENDED ALTERNATIVE:**
-
-```tsx
-"use client";
-
-import { useRef, useState, useCallback } from "react";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
-import { useGame } from "../GameContext";
-
-// Register once at app level if not already done
-gsap.registerPlugin(useGSAP);
-
-interface ResultsModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-}
-
-const ResultsModal: React.FC<ResultsModalProps> = ({ isOpen, onClose }) => {
-    const game = useGame();
-    const containerRef = useRef<HTMLDivElement>(null);
-    const backdropRef = useRef<HTMLButtonElement>(null);
-    const modalRef = useRef<HTMLDivElement>(null);
-    const [shouldRender, setShouldRender] = useState(false);
-    const timelineRef = useRef<gsap.core.Timeline | null>(null);
-
-    // Handle render state when isOpen changes
-    useGSAP(() => {
-        if (isOpen && !shouldRender) {
-            setShouldRender(true);
-        }
-    }, { dependencies: [isOpen] });
-
-    // GSAP-Master recommended: useGSAP with timeline for sequenced modal animations
-    useGSAP(() => {
-        if (!shouldRender || !backdropRef.current || !modalRef.current) return;
-
-        // Create and store timeline for later use in close animation
-        const tl = gsap.timeline({ paused: true });
-        
-        tl.fromTo(
-            backdropRef.current,
-            { opacity: 0 },
-            { 
-                opacity: 1, 
-                duration: 0.3, 
-                ease: "power2.out",
-                force3D: true
-            }
-        )
-        .fromTo(
-            modalRef.current,
-            { opacity: 0, scale: 0.9, y: 20 },
-            { 
-                opacity: 1, 
-                scale: 1, 
-                y: 0, 
-                duration: 0.4, 
-                ease: "back.out(1.7)",
-                force3D: true,
-                clearProps: "scale,y"  // Clean up transforms after animation
-            },
-            "-=0.15"  // Overlap with backdrop fade
-        );
-
-        timelineRef.current = tl;
-
-        // Play the animation when modal opens
-        if (isOpen) {
-            tl.play();
-        }
-
-        // Cleanup function - kill timeline when component unmounts
-        return () => {
-            tl.kill();
-        };
-    }, { 
-        scope: containerRef,
-        dependencies: [shouldRender, isOpen]
-    });
-
-    // GSAP-optimized close handler with animation
-    const handleClose = useCallback(() => {
-        if (!backdropRef.current || !modalRef.current) {
-            onClose();
-            return;
-        }
-
-        // Create exit timeline
-        const exitTl = gsap.timeline({
-            onComplete: () => {
-                setShouldRender(false);
-                onClose();
-            }
-        });
-
-        exitTl
-            .to(modalRef.current, {
-                opacity: 0,
-                scale: 0.9,
-                y: 20,
-                duration: 0.25,
-                ease: "power2.in",
-                force3D: true
-            })
-            .to(backdropRef.current, {
-                opacity: 0,
-                duration: 0.25,
-                ease: "power2.in",
-                force3D: true
-            }, "-=0.2");
-    }, [onClose]);
-
-    if (!shouldRender) return null;
-
-    const isNewBest = game.wpm > (game.statistics.bestWPM || 0);
-
-    return (
-        <div 
-            ref={containerRef}
-            className="absolute inset-0 z-50 flex items-center justify-center"
-        >
-            {/* Backdrop */}
-            <button
-                ref={backdropRef}
-                className="absolute inset-0 bg-black/70 backdrop-blur-sm animated-element"
-                onClick={handleClose}
-                type="button"
-                aria-label="Close modal"
-                style={{ opacity: 0 }}  // Initial state for GSAP
-            />
-
-            {/* Modal Content */}
-            <div 
-                ref={modalRef}
-                className="relative z-10 w-full max-w-md mx-4 p-6 bg-gray-800 rounded-xl border border-gray-700 shadow-2xl animated-element"
-                style={{ opacity: 0, transform: 'scale(0.9) translateY(20px)' }}  // Initial state
-            >
-                {/* ... rest of modal content ... */}
-            </div>
-        </div>
-    );
-};
-
-export default ResultsModal;
-```
-
-**Key Improvements:**
-- Uses `useGSAP` for automatic cleanup when component unmounts
-- Timeline stored in ref for access in close handler
-- `force3D: true` on all animations for GPU acceleration  
-- `clearProps` removes transforms after entrance animation
-- Coordinated entrance/exit timelines with overlapping animations
-- `useCallback` for stable close handler reference
-- Initial styles set for GSAP to animate from
-- Added `animated-element` class for CSS performance optimizations
-
----
-
-**Also update all `onClick={onClose}` to `onClick={handleClose}` in the buttons:**
-
-```tsx
-{/* Action Buttons */}
-<div className="flex gap-3">
-    <button
-        onClick={() => {
-            game.resetTest();
-            handleClose();  // Changed from onClose
-        }}
-        className="flex-1 px-6 py-3 bg-FemBlue-400 hover:bg-FemBlue-500 text-black font-semibold rounded-lg transition"
-        type="button"
-    >
-        Try Again
-    </button>
-    <button
-        onClick={() => {
-            game.fetchNewPassage();
-            handleClose();  // Changed from onClose
-        }}
-        className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-gray-100 font-semibold rounded-lg transition"
-        type="button"
-    >
-        New Passage
-    </button>
-</div>
-```
-
-### File: `src/components/typing-test/TypingTestContainter.tsx` - Complete Refactor
-
-**Replace the entire component with this structure to ensure modal positioning:**
-
-```tsx
-"use client";
-
-import { useEffect, useState } from "react";
-import { useGame } from "@/components/GameContext";
-import PassageDisplay from "./PassageDisplay";
-import ResultsModal from "./ResultsModel";
-import TypingInput from "./TypingInput";
-import StartOverlay from "./StartOverlay";
-import Confetti from "./Confetti";
-
-const TypingTestContainer: React.FC = () => {
-    const game = useGame();
-    const [showResultsModal, setShowResultsModal] = useState(false);
-    const [showConfetti, setShowConfetti] = useState(false);
-
-    // Show modal and confetti when test completes
-    useEffect(() => {
-        if (game.testStatus === "completed") {
-            setShowResultsModal(true);
-            setShowConfetti(true);
-            
-            // Stop confetti after 3 seconds
-            const timer = setTimeout(() => {
-                setShowConfetti(false);
-            }, 3000);
-            
-            return () => clearTimeout(timer);
-        }
-    }, [game.testStatus]);
-
-    // Loading state
-    if (!game.passage) {
-        return (
-            <div className="w-full mx-auto mt-8 text-pretty">
-                <p className="text-gray-400 text-center">Loading passage...</p>
-            </div>
-        );
-    }
-
-    return (
-        <>
-            <Confetti isActive={showConfetti} duration={3000} />
-            
-            {/* Relative container for modal positioning - modal only covers this area */}
-            <div className="relative w-full mx-auto mt-8 text-pretty min-h-[200px]">
-                {/* Passage display area */}
-                <div className="relative">
-                    <PassageDisplay />
-                    {game.testStatus !== "completed" && <TypingInput />}
-                    {(game.testStatus === "idle" || game.testStatus === "ready") && (
-                        <StartOverlay />
-                    )}
-                </div>
-
-                {/* Results Modal - positioned absolute within this container */}
-                <ResultsModal
-                    isOpen={showResultsModal}
-                    onClose={() => setShowResultsModal(false)}
-                />
-            </div>
-        </>
-    );
-};
-
-export default TypingTestContainer;
-```
-
----
-
-## Step 8: New Passage Reset Behavior
-
-### Overview
-
-When a new passage is loaded, ensure the timer and typed values are reset.
-
-### File: `src/components/GameContext.tsx`
-
-**Verify/Update the `fetchNewPassage` function to reset state:**
-
-**BEFORE (if it doesn't reset):**
-```tsx
-const fetchNewPassage = useCallback(async () => {
-    try {
-        const res = await fetch(
-            `/api/passages/action?difficulty=${difficulty.toLowerCase()}`,
-            { cache: "no-store" },
-        );
-        if (!res.ok) throw new Error("Failed to fetch passage");
-        const data: Passage = await res.json();
-        setPassage(data);
-        setTestStatus("ready");
-    } catch (error) {
-        console.error("Failed to fetch passage:", error);
-    }
-}, [difficulty]);
-```
-
-**AFTER (with reset):**
-```tsx
-const fetchNewPassage = useCallback(async () => {
-    try {
-        // Reset state before fetching new passage
-        setTypedValue("");
-        timer.reset();
-        
-        const res = await fetch(
-            `/api/passages/action?difficulty=${difficulty.toLowerCase()}`,
-            { cache: "no-store" },
-        );
-        if (!res.ok) throw new Error("Failed to fetch passage");
-        const data: Passage = await res.json();
-        setPassage(data);
-        setTestStatus("ready");
-    } catch (error) {
-        console.error("Failed to fetch passage:", error);
-    }
-}, [difficulty, timer]);
-```
-
----
-
-## Summary Checklist
-
-After implementing all changes, verify the following:
-
-### Core Functionality
-- [ ] **GSAP installed** - Run `npm install gsap @gsap/react`
-- [ ] **Stats colors change dynamically** based on values and test status
-- [ ] **Stats animate** (scale pulse) when colors change
-- [ ] **Passage shakes subtly** when typing with >90% accuracy for >5 seconds with >20 chars typed
-- [ ] **Start overlay** appears with blur effect, fades out when typing begins
-- [ ] **Confetti animation** plays for 3 seconds on test completion
-- [ ] **Results modal** fades in/out smoothly with GSAP
-- [ ] **Modal only overlays** the typing area, not header/footer
-- [ ] **New passage** properly resets timer and typed values
-
-### GSAP-Master Best Practices (Recommended)
-- [ ] **@gsap/react package installed** - For `useGSAP` hook
-- [ ] **useGSAP hook used** - Instead of useEffect for automatic cleanup
-- [ ] **gsap.registerPlugin(useGSAP)** - Called once at app initialization
-- [ ] **force3D: true** - Added to all animations for GPU acceleration
-- [ ] **clearProps** - Used after animations to clean up inline styles
-- [ ] **gsap.context()** - Used if sticking with useEffect pattern
-- [ ] **Cleanup functions** - Return `ctx.revert()` in useEffect cleanup
-- [ ] **animated-element CSS class** - Applied to animated elements
-- [ ] **Performance CSS added** - will-change, backface-visibility, transform: translateZ(0)
-- [ ] **Reduced motion media query** - Respects user accessibility preferences
-
----
-
-## File Changes Summary
-
-| File | Action |
-|------|--------|
-| `package.json` | Add `gsap` and `@gsap/react` via `npm install gsap @gsap/react` |
-| `src/app/globals.css` | Add `.animated-element` CSS class and reduced-motion media query |
-| `src/components/statsContainter.tsx` | Add imports, color helpers, refs, GSAP animations |
-| `src/components/typing-test/PassageDisplay.tsx` | Add GSAP shake animation effect |
-| `src/components/typing-test/StartOverlay.tsx` | **CREATE NEW FILE** - Overlay button component |
-| `src/components/typing-test/Confetti.tsx` | **CREATE NEW FILE** - Canvas confetti component |
-| `src/components/typing-test/ResultsModel.tsx` | Add GSAP fade in/out animations, change positioning |
-| `src/components/typing-test/TypingTestContainter.tsx` | Integrate overlay, confetti, restructure for modal |
-| `src/components/GameContext.tsx` | Ensure `fetchNewPassage` resets timer and typedValue |
-
----
-
-## GSAP-Master Quick Reference
-
-### Essential Imports for React
-```tsx
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
-
-// Register once (in layout.tsx or App.tsx)
-gsap.registerPlugin(useGSAP);
-```
-
-### Performance Defaults (Set Once)
-```tsx
-gsap.defaults({ 
-  force3D: true,   // GPU acceleration
-  lazy: false      // Immediate rendering
+    
+    await use();
+  }
 });
+
+export { expect };
 ```
 
-### Animation Pattern Template
+**Why custom fixtures?**
+- **Reusability**: Common setup patterns defined once
+- **Isolation**: Each test starts from a known state
+- **Readability**: Test code focuses on assertions, not setup
+
+---
+
+## 2. Modal Exit Prevention Logic
+
+### Problem Statement
+
+The results modal must not be dismissible by accident. Users often press Escape or click outside modals by habit, which would lose their test results and break the user experience.
+
+### Allowed Exit Methods
+
+| Action | Allowed | Implementation Location |
+|--------|---------|------------------------|
+| Click "Try Again" button | ✅ Yes | `ResultsModal.tsx` button onClick |
+| Click "New Passage" button | ✅ Yes | `ResultsModal.tsx` button onClick |
+| Press `Ctrl+R` (Reset) | ✅ Yes | `useKeyboardShortcuts` hook |
+| Press `Ctrl+N` (New Passage) | ✅ Yes | `useKeyboardShortcuts` hook |
+| Press `Escape` | ❌ No | Must be blocked |
+| Click backdrop/outside | ❌ No | Must be blocked |
+| Browser back button | ❌ No | Should be handled |
+
+### Current Implementation Analysis
+
+**Current Code** (from `ResultsModel.tsx` lines 101-108):
 ```tsx
-useGSAP(() => {
-  gsap.fromTo(element, 
-    { /* from state */ },
-    { 
-      /* to state */,
-      force3D: true,
-      clearProps: "transform"  // Clean up after animation
+{/* Backdrop */}
+<button
+  ref={backdropRef}
+  className="absolute inset-0 bg-FemNeutral-900"
+  onClick={handleClose}  // ⚠️ PROBLEM: Backdrop click closes modal
+  type="button"
+  aria-label="Close modal"
+/>
+```
+
+**Problem**: The backdrop currently calls `handleClose()` on click, allowing accidental dismissal.
+
+### Proposed Logic Changes
+
+#### 2.1 Block Backdrop Click
+
+**Before** (current behavior):
+```tsx
+<button
+  ref={backdropRef}
+  className="absolute inset-0 bg-FemNeutral-900"
+  onClick={handleClose}  // Closes on click
+  type="button"
+  aria-label="Close modal"
+/>
+```
+
+**After** (proposed behavior):
+```tsx
+<div
+  ref={backdropRef}
+  className="absolute inset-0 bg-FemNeutral-900"
+  aria-hidden="true"  // Not interactive
+/>
+```
+
+**Why this change?**
+- **Changed from `<button>` to `<div>`**: Non-interactive element cannot receive click events
+- **Removed onClick handler**: No accidental dismissal path
+- **Added `aria-hidden="true"`**: Screen readers ignore decorative backdrop
+- **Simpler**: No need for click event prevention logic
+
+#### 2.2 Block Escape Key
+
+**Location**: New effect should be added in `ResultsModal.tsx`
+
+**Before** (no Escape key handling):
+```tsx
+// No Escape key prevention exists
+```
+
+**After** (proposed logic):
+```tsx
+// Add effect to block Escape key when modal is open
+useEffect(() => {
+  if (!isOpen) return;
+  
+  const handleKeyDown = (event: KeyboardEvent) => {
+    // Block Escape key - modal can only be closed via explicit actions
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      // Optional: Provide visual feedback (e.g., shake animation)
+      return;
     }
+  };
+  
+  // Use capture phase to intercept before other handlers
+  document.addEventListener('keydown', handleKeyDown, { capture: true });
+  
+  return () => {
+    document.removeEventListener('keydown', handleKeyDown, { capture: true });
+  };
+}, [isOpen]);
+```
+
+**Why this approach?**
+- **Capture phase (`{ capture: true }`)**: Intercepts event before it bubbles, preventing other handlers from seeing it
+- **`event.stopPropagation()`**: Prevents event from reaching other listeners
+- **Cleanup on unmount**: No memory leaks or stale handlers
+- **Only active when modal is open**: No global key blocking
+
+#### 2.3 Integration with Existing Keyboard Shortcuts
+
+**Current keyboard shortcuts** (from `keyboard-shortcuts.ts`):
+```typescript
+export const KEYBOARD_SHORTCUTS = {
+  START_TEST: { ctrlKey: false, key: "enter", description: "Start Test" },
+  RESET_TEST: { ctrlKey: true, key: "r", description: "Reset Test" },
+  NEW_PASSAGE: { ctrlKey: true, key: "n", description: "New Passage" },
+  CANCEL_TEST: { ctrlKey: true, key: "c", description: "Cancel Test" },
+} as const;
+```
+
+**Proposed additional shortcut handling in modal**:
+
+The modal should handle `Ctrl+R` and `Ctrl+N` even when focused, allowing proper exit:
+
+**Before** (shortcuts only work via GameContext):
+```tsx
+// ResultsModal has no direct shortcut handling
+```
+
+**After** (modal listens for allowed shortcuts):
+```tsx
+useEffect(() => {
+  if (!isOpen) return;
+  
+  const handleKeyDown = (event: KeyboardEvent) => {
+    const isCtrlOrMeta = event.ctrlKey || event.metaKey;
+    
+    // Block Escape
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    
+    // Allow Ctrl+R (Reset) - close modal and reset test
+    if (isCtrlOrMeta && event.key.toLowerCase() === 'r') {
+      event.preventDefault();
+      game.resetTest();
+      handleClose();
+      return;
+    }
+    
+    // Allow Ctrl+N (New Passage) - close modal and fetch new passage
+    if (isCtrlOrMeta && event.key.toLowerCase() === 'n') {
+      event.preventDefault();
+      game.fetchNewPassage();
+      handleClose();
+      return;
+    }
+  };
+  
+  document.addEventListener('keydown', handleKeyDown, { capture: true });
+  return () => document.removeEventListener('keydown', handleKeyDown, { capture: true });
+}, [isOpen, game, handleClose]);
+```
+
+**Why this approach?**
+- **Centralized handling**: Modal controls its own exit behavior
+- **Consistent UX**: Same shortcuts work whether modal is focused or not
+- **Clear intent**: Only deliberate actions close the modal
+
+#### 2.4 Prevent Browser Back Button
+
+**Before** (no history management):
+```tsx
+// Browser back navigates away from page
+```
+
+**After** (proposed history state management):
+```tsx
+useEffect(() => {
+  if (!isOpen) return;
+  
+  // Push a dummy history state when modal opens
+  window.history.pushState({ modal: 'results' }, '');
+  
+  const handlePopState = (event: PopStateEvent) => {
+    // Prevent back navigation by re-pushing state
+    if (event.state?.modal !== 'results') {
+      window.history.pushState({ modal: 'results' }, '');
+    }
+  };
+  
+  window.addEventListener('popstate', handlePopState);
+  
+  return () => {
+    window.removeEventListener('popstate', handlePopState);
+    // Clean up history state on proper close
+    if (window.history.state?.modal === 'results') {
+      window.history.back();
+    }
+  };
+}, [isOpen]);
+```
+
+**Why this approach?**
+- **Non-intrusive**: Doesn't change URL, just prevents navigation
+- **Cleanup on close**: Removes dummy state when modal closes properly
+- **User expectation**: Back button often means "go back" not "close modal"
+
+### Accessibility Considerations
+
+| Concern | Solution |
+|---------|----------|
+| Focus trapping | Modal should trap focus within itself using `inert` attribute on background content |
+| Screen reader announcement | Use `role="dialog"` and `aria-modal="true"` |
+| Escape key expectation | Provide clear visual instruction that Escape doesn't close |
+| Keyboard navigation | Ensure Tab cycles through modal buttons only |
+
+**Proposed focus trap implementation**:
+```tsx
+// When modal opens, add inert to main content
+useEffect(() => {
+  if (!isOpen) return;
+  
+  const mainContent = document.querySelector('main');
+  if (mainContent) {
+    mainContent.setAttribute('inert', '');
+  }
+  
+  return () => {
+    if (mainContent) {
+      mainContent.removeAttribute('inert');
+    }
+  };
+}, [isOpen]);
+```
+
+**Why `inert` attribute?**
+- **Native browser support**: No JavaScript focus management needed
+- **Complete isolation**: Prevents all interaction with background content
+- **Screen reader friendly**: Content is hidden from assistive technology
+
+---
+
+## 3. Modal Text Logic
+
+### Problem Statement
+
+The modal must display contextually appropriate messages based on the user's performance history. This creates a more engaging experience by acknowledging achievements and encouraging continued improvement.
+
+### State Derivation Logic
+
+#### 3.1 Define Test Result Types
+
+```typescript
+type TestResultType = 'baseline' | 'new-best' | 'normal';
+```
+
+#### 3.2 State Derivation Function
+
+**Before** (current simple check in `ResultsModel.tsx` line 98):
+```tsx
+const isNewBest = game.wpm > (game.statistics.bestWPM || 0);
+```
+
+**After** (proposed comprehensive derivation):
+```typescript
+interface ModalTextConfig {
+  heading: string;
+  subheading: string;
+  emoji?: string;
+}
+
+function deriveTestResultType(
+  currentWPM: number,
+  statistics: UserStatistics
+): TestResultType {
+  // Case 1: First test ever (baseline)
+  // totalTests is 0 before this test is saved, or 1 if just saved
+  // We check if this is the user's first completed test
+  const isFirstTest = statistics.totalTests === 0 || 
+    (statistics.totalTests === 1 && statistics.bestWPM === currentWPM);
+  
+  if (isFirstTest) {
+    return 'baseline';
+  }
+  
+  // Case 2: New personal best
+  // Current WPM exceeds the previous best
+  const isNewBest = currentWPM > statistics.bestWPM;
+  
+  if (isNewBest) {
+    return 'new-best';
+  }
+  
+  // Case 3: Normal completion
+  return 'normal';
+}
+
+function getModalTextConfig(resultType: TestResultType): ModalTextConfig {
+  const configs: Record<TestResultType, ModalTextConfig> = {
+    'baseline': {
+      heading: 'Baseline Established!',
+      subheading: "You've set the bar. Now the real challenge begins—time to beat it.",
+      emoji: '🎯'
+    },
+    'new-best': {
+      heading: 'High Score Smashed!',
+      subheading: "You're getting faster. That was incredible typing.",
+      emoji: '🎉'
+    },
+    'normal': {
+      heading: 'Test Complete!',
+      subheading: 'Solid run. Keep pushing to beat your high score.',
+      emoji: undefined
+    }
+  };
+  
+  return configs[resultType];
+}
+```
+
+**Why this design?**
+
+| Decision | Reason |
+|----------|--------|
+| Separate `deriveTestResultType` function | Single responsibility; testable in isolation |
+| Explicit type union | TypeScript ensures all cases are handled |
+| Config object pattern | Easy to add new result types or modify text |
+| Emoji as optional | Normal completions don't need celebration |
+
+#### 3.3 Usage in Component
+
+**Before** (current `ResultsModel.tsx` lines 117-125):
+```tsx
+<h2 className="text-2xl font-bold text-FemBlue-400 mb-6 text-center">
+  Test Complete! {isNewBest && "🎉"}
+</h2>
+
+{isNewBest && (
+  <p className="text-emerald-400 text-center mb-4 font-semibold">
+    New Personal Best!
+  </p>
+)}
+```
+
+**After** (proposed implementation):
+```tsx
+// At the top of the component, derive the state
+const resultType = deriveTestResultType(game.wpm, game.statistics);
+const textConfig = getModalTextConfig(resultType);
+
+// In the JSX
+<h2 className="text-2xl font-bold text-FemBlue-400 mb-6 text-center">
+  {textConfig.heading} {textConfig.emoji}
+</h2>
+
+<p className={cn(
+  "text-center mb-4 font-semibold",
+  resultType === 'new-best' ? "text-emerald-400" : 
+  resultType === 'baseline' ? "text-FemBlue-400" : 
+  "text-FemNeutral-400"
+)}>
+  {textConfig.subheading}
+</p>
+```
+
+**Why this refactor?**
+- **Single source of truth**: Text defined in one place
+- **Consistent styling**: Color tied to result type
+- **Extensibility**: Adding new result types only requires updating the config
+
+#### 3.4 Edge Cases
+
+| Scenario | Handling |
+|----------|----------|
+| Statistics not yet loaded | Default to 'normal' type |
+| WPM is 0 (user didn't type) | Still show 'normal' - don't punish |
+| Tie with previous best | 'normal' (must beat, not match) |
+| Statistics cleared mid-session | Next test becomes 'baseline' |
+
+**Robust derivation with edge cases**:
+```typescript
+function deriveTestResultType(
+  currentWPM: number,
+  statistics: UserStatistics | null
+): TestResultType {
+  // Guard: No statistics available
+  if (!statistics) {
+    return 'normal';
+  }
+  
+  // Guard: Invalid WPM (shouldn't happen, but be defensive)
+  if (currentWPM <= 0) {
+    return 'normal';
+  }
+  
+  // Case 1: First test (baseline)
+  if (statistics.totalTests === 0) {
+    return 'baseline';
+  }
+  
+  // Case 2: New best (must exceed, not equal)
+  if (currentWPM > statistics.bestWPM) {
+    return 'new-best';
+  }
+  
+  // Case 3: Normal completion
+  return 'normal';
+}
+```
+
+---
+
+## 4. Overlay Blur Behavior
+
+### Problem Statement
+
+The start overlay with blur effect should:
+1. Appear only on the first visit in a browser session
+2. Reset when the page is reloaded or a new session starts
+3. NOT persist across browser sessions (no localStorage)
+4. Cover the entire passage area without visual cropping
+
+### Current Implementation Analysis
+
+**Current Code** (from `StartOverlay.tsx` lines 15-31):
+```tsx
+// Track whether this is the first visit in the current session.
+const [isFirstVisit, setIsFirstVisit] = useState<boolean>(true);
+
+useEffect(() => {
+  // Read sessionStorage on mount
+  const seen =
+    typeof window !== "undefined"
+      ? sessionStorage.getItem("seenStartOverlay")
+      : null;
+  setIsFirstVisit(!seen);
+}, []);
+
+// If the user starts typing, mark the overlay as seen.
+useEffect(() => {
+  if (game.testStatus === "running" && isFirstVisit) {
+    sessionStorage.setItem("seenStartOverlay", "true");
+    setIsFirstVisit(false);
+  }
+}, [game.testStatus, isFirstVisit]);
+```
+
+**Current CSS** (from `StartOverlay.tsx` line 115):
+```tsx
+className="absolute w-full h-full inset-0 z-20 flex flex-col items-center justify-center bg-FemNeutral-900/10 backdrop-blur-sm"
+```
+
+### Why Session Storage (Not Local Storage)
+
+| Storage Type | Persistence | Use Case |
+|--------------|-------------|----------|
+| `sessionStorage` | Tab/window lifetime | ✅ Overlay state - resets on new session |
+| `localStorage` | Permanent until cleared | ❌ Would permanently hide overlay |
+| Cookie | Configurable expiry | ❌ Overkill for this use case |
+| Memory (useState) | Component lifetime | ❌ Would reset on every navigation |
+
+**Why session-scoped storage is correct:**
+
+1. **New users see instructions**: First-time visitors get the "Start typing test" prompt
+2. **Returning users aren't annoyed**: After starting once, overlay doesn't reappear during session
+3. **Page reload resets**: Refreshing the page in a new tab shows the overlay again
+4. **No permanent storage**: User's browser isn't cluttered with persistent data
+
+### Blur Cropping Issue
+
+**Problem**: The current overlay uses `absolute` positioning with `inset-0`, but it may appear cropped if the parent container has `overflow: hidden` or insufficient height.
+
+**Current parent structure** (from `TypingTestContainter.tsx` lines 33-42):
+```tsx
+if (game.testStatus === "idle" || game.testStatus === "ready") {
+  return (
+    <div className="w-full h-full mx-auto mt-8 text-pretty">
+      <div className="relative h-full">  {/* ← Parent of overlay */}
+        <PassageDisplay />
+        <TypingInput />
+        <StartOverlay />
+      </div>
+    </div>
   );
-}, { 
-  scope: containerRef,     // Scope animations
-  dependencies: [trigger]  // Re-run when trigger changes
+}
+```
+
+**Before** (current overlay positioning):
+```tsx
+<div
+  ref={overlayRef}
+  className="absolute w-full h-full inset-0 z-20 flex flex-col items-center justify-center bg-FemNeutral-900/10 backdrop-blur-sm"
+  style={{
+    opacity: isVisible ? 1 : 0,
+    display: isVisible ? "flex" : "none",
+  }}
+>
+```
+
+**After** (proposed fix for blur cropping):
+```tsx
+<div
+  ref={overlayRef}
+  className="absolute z-20 flex flex-col items-center justify-center bg-FemNeutral-900/10 backdrop-blur-sm"
+  style={{
+    // Expand beyond parent bounds to prevent cropping
+    top: '-1rem',
+    left: '-1rem',
+    right: '-1rem',
+    bottom: '-1rem',
+    // Or use negative margins with padding compensation
+    // margin: '-1rem',
+    // padding: '1rem',
+    opacity: isVisible ? 1 : 0,
+    display: isVisible ? "flex" : "none",
+  }}
+>
+```
+
+**Alternative: Fix parent container**
+
+If the issue is `overflow: hidden` on a parent, the parent should be adjusted:
+
+**Before** (hypothetical parent with overflow issues):
+```tsx
+<div className="relative h-full overflow-hidden">
+```
+
+**After** (allow overlay to extend):
+```tsx
+<div className="relative h-full overflow-visible">
+```
+
+**Why these solutions work:**
+
+1. **Negative inset values**: Overlay extends beyond parent bounds, ensuring blur covers edges
+2. **`overflow-visible`**: Parent doesn't clip child elements
+3. **Padding compensation**: If using negative margins, inner content stays properly positioned
+
+### Complete Session Storage Logic Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Page Load                                │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Check sessionStorage.getItem("seenStartOverlay")           │
+└─────────────────────────────────────────────────────────────┘
+                           │
+              ┌────────────┴────────────┐
+              ▼                         ▼
+        [null/undefined]          ["true"]
+              │                         │
+              ▼                         ▼
+    ┌─────────────────┐       ┌─────────────────┐
+    │ isFirstVisit =  │       │ isFirstVisit =  │
+    │     true        │       │     false       │
+    └─────────────────┘       └─────────────────┘
+              │                         │
+              ▼                         ▼
+    ┌─────────────────┐       ┌─────────────────┐
+    │ Show Overlay    │       │ Hide Overlay    │
+    │ (blur + button) │       │ (go straight    │
+    └─────────────────┘       │  to test)       │
+              │               └─────────────────┘
+              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  User clicks "Start" OR starts typing                       │
+└─────────────────────────────────────────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  sessionStorage.setItem("seenStartOverlay", "true")         │
+│  setIsFirstVisit(false)                                     │
+└─────────────────────────────────────────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Subsequent passage changes / retries:                      │
+│  Overlay stays hidden (sessionStorage persists)             │
+└─────────────────────────────────────────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Close tab / Open in new tab / Page reload:                 │
+│  sessionStorage clears → Overlay shows again                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Why NOT Persistent Storage
+
+Using `localStorage` would cause these issues:
+
+1. **Returning users never see instructions again**: If a user clears cookies but not localStorage, they'd miss the overlay
+2. **New device, old browser profile**: User on new computer with synced profile would miss overlay
+3. **Cannot test/demo overlay**: Developers/QA would need to manually clear storage
+4. **GDPR considerations**: Persistent storage may require consent in some jurisdictions
+
+**sessionStorage is the correct choice** because:
+- Automatically clears when session ends
+- No user data persistence concerns
+- Easy to reset by opening new tab
+- Matches user expectation: "I visited before in this tab"
+
+---
+
+## 5. Playwright Tests
+
+### Test File Structure
+
+```
+e2e/
+├── tests/
+│   ├── modal-exit-prevention.spec.ts
+│   ├── modal-text-content.spec.ts
+│   ├── overlay-behavior.spec.ts
+│   └── keyboard-shortcuts.spec.ts
+```
+
+### 5.1 Modal Exit Prevention Tests
+
+**File**: `e2e/tests/modal-exit-prevention.spec.ts`
+
+```typescript
+import { test, expect } from '@playwright/test';
+
+test.describe('Results Modal Exit Prevention', () => {
+  // Helper to complete a typing test and open the modal
+  async function completeTestAndOpenModal(page: Page) {
+    await page.goto('/');
+    
+    // Wait for passage to load
+    await page.waitForSelector('[data-testid="passage-text"]');
+    
+    // Get passage text
+    const passageText = await page.textContent('[data-testid="passage-text"]');
+    
+    // Type the full passage to complete the test
+    const input = page.locator('input[aria-label="Typing input"]');
+    await input.focus();
+    await input.fill(passageText || '');
+    
+    // Wait for results modal to appear
+    await page.waitForSelector('[data-testid="results-modal"]', {
+      state: 'visible',
+      timeout: 5000
+    });
+  }
+
+  test('Escape key should NOT close the modal', async ({ page }) => {
+    await completeTestAndOpenModal(page);
+    
+    // Verify modal is visible
+    const modal = page.locator('[data-testid="results-modal"]');
+    await expect(modal).toBeVisible();
+    
+    // Press Escape key
+    await page.keyboard.press('Escape');
+    
+    // Modal should still be visible
+    await expect(modal).toBeVisible();
+    
+    // Verify we're still on the completed state
+    const heading = page.locator('[data-testid="results-modal"] h2');
+    await expect(heading).toBeVisible();
+  });
+
+  test('Clicking outside modal (backdrop) should NOT close it', async ({ page }) => {
+    await completeTestAndOpenModal(page);
+    
+    const modal = page.locator('[data-testid="results-modal"]');
+    await expect(modal).toBeVisible();
+    
+    // Click on the backdrop (outside the modal content)
+    // The backdrop should be a sibling or parent element
+    await page.click('[data-testid="modal-backdrop"]', {
+      position: { x: 10, y: 10 }, // Click near edge, away from modal content
+      force: true // Click even if another element would receive the click
+    });
+    
+    // Modal should still be visible
+    await expect(modal).toBeVisible();
+  });
+
+  test('Browser back button should NOT close the modal', async ({ page }) => {
+    await completeTestAndOpenModal(page);
+    
+    const modal = page.locator('[data-testid="results-modal"]');
+    await expect(modal).toBeVisible();
+    
+    // Try to go back
+    await page.goBack();
+    
+    // Modal should still be visible (history state prevents navigation)
+    await expect(modal).toBeVisible();
+    
+    // URL should still be the same
+    expect(page.url()).toContain('localhost:3000');
+  });
+
+  test('Try Again button SHOULD close modal and reset test', async ({ page }) => {
+    await completeTestAndOpenModal(page);
+    
+    // Click Try Again button
+    await page.click('button:has-text("Try Again")');
+    
+    // Modal should close
+    const modal = page.locator('[data-testid="results-modal"]');
+    await expect(modal).not.toBeVisible();
+    
+    // Test should be reset (ready state, input cleared)
+    const input = page.locator('input[aria-label="Typing input"]');
+    await expect(input).toHaveValue('');
+  });
+
+  test('New Passage button SHOULD close modal and load new passage', async ({ page }) => {
+    await completeTestAndOpenModal(page);
+    
+    // Get current passage text before clicking
+    const originalPassage = await page.textContent('[data-testid="passage-text"]');
+    
+    // Click New Passage button
+    await page.click('button:has-text("New Passage")');
+    
+    // Modal should close
+    const modal = page.locator('[data-testid="results-modal"]');
+    await expect(modal).not.toBeVisible();
+    
+    // Wait for new passage to load
+    await page.waitForSelector('[data-testid="passage-text"]');
+    
+    // Note: New passage might be the same by chance, but input should be cleared
+    const input = page.locator('input[aria-label="Typing input"]');
+    await expect(input).toHaveValue('');
+  });
 });
 ```
 
-### If Using useEffect Instead
-```tsx
-useEffect(() => {
-  const ctx = gsap.context(() => {
-    gsap.fromTo(/* animation */);
+**Why each test exists:**
+
+| Test | Purpose |
+|------|---------|
+| Escape key test | Verifies accidental key press doesn't lose results |
+| Backdrop click test | Verifies mouse misclicks don't dismiss modal |
+| Back button test | Verifies browser navigation doesn't break flow |
+| Try Again test | Verifies legitimate exit path works |
+| New Passage test | Verifies legitimate exit path works |
+
+### 5.2 Modal Text Content Tests
+
+**File**: `e2e/tests/modal-text-content.spec.ts`
+
+```typescript
+import { test, expect } from '@playwright/test';
+
+test.describe('Results Modal Text Content', () => {
+  test.beforeEach(async ({ page }) => {
+    // Clear storage to ensure clean state
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
   });
-  return () => ctx.revert();  // CRITICAL: Always cleanup
-}, [dependency]);
+
+  test('First test should show "Baseline Established!" message', async ({ page }) => {
+    // Ensure no previous statistics exist
+    await page.evaluate(() => {
+      localStorage.removeItem('typingTestStatistics');
+    });
+    
+    await page.reload();
+    await page.waitForSelector('[data-testid="passage-text"]');
+    
+    // Complete the test
+    const passageText = await page.textContent('[data-testid="passage-text"]');
+    const input = page.locator('input[aria-label="Typing input"]');
+    await input.focus();
+    await input.fill(passageText || '');
+    
+    // Wait for modal
+    await page.waitForSelector('[data-testid="results-modal"]');
+    
+    // Check for baseline message
+    const heading = page.locator('[data-testid="results-modal"] h2');
+    await expect(heading).toContainText('Baseline Established!');
+    
+    const subheading = page.locator('[data-testid="results-modal"] p').first();
+    await expect(subheading).toContainText("You've set the bar");
+  });
+
+  test('New personal best should show "High Score Smashed!" message', async ({ page }) => {
+    // Set up existing statistics with a low WPM
+    await page.evaluate(() => {
+      const stats = {
+        totalTests: 5,
+        bestWPM: 10, // Very low, easy to beat
+        bestAccuracy: 80,
+        averageWPM: 8,
+        averageAccuracy: 75,
+        recentTests: [],
+        lastUpdated: new Date().toISOString()
+      };
+      localStorage.setItem('typingTestStatistics', JSON.stringify(stats));
+    });
+    
+    await page.reload();
+    await page.waitForSelector('[data-testid="passage-text"]');
+    
+    // Complete the test (any reasonable typing should beat 10 WPM)
+    const passageText = await page.textContent('[data-testid="passage-text"]');
+    const input = page.locator('input[aria-label="Typing input"]');
+    await input.focus();
+    await input.fill(passageText || '');
+    
+    // Wait for modal
+    await page.waitForSelector('[data-testid="results-modal"]');
+    
+    // Check for new best message
+    const heading = page.locator('[data-testid="results-modal"] h2');
+    await expect(heading).toContainText('High Score Smashed!');
+    
+    const subheading = page.locator('[data-testid="results-modal"] p').first();
+    await expect(subheading).toContainText("You're getting faster");
+  });
+
+  test('Normal completion should show "Test Complete!" message', async ({ page }) => {
+    // Set up existing statistics with a very high WPM (impossible to beat)
+    await page.evaluate(() => {
+      const stats = {
+        totalTests: 10,
+        bestWPM: 500, // Impossible to beat with fill()
+        bestAccuracy: 100,
+        averageWPM: 400,
+        averageAccuracy: 98,
+        recentTests: [],
+        lastUpdated: new Date().toISOString()
+      };
+      localStorage.setItem('typingTestStatistics', JSON.stringify(stats));
+    });
+    
+    await page.reload();
+    await page.waitForSelector('[data-testid="passage-text"]');
+    
+    // Complete the test
+    const passageText = await page.textContent('[data-testid="passage-text"]');
+    const input = page.locator('input[aria-label="Typing input"]');
+    await input.focus();
+    await input.fill(passageText || '');
+    
+    // Wait for modal
+    await page.waitForSelector('[data-testid="results-modal"]');
+    
+    // Check for normal completion message
+    const heading = page.locator('[data-testid="results-modal"] h2');
+    await expect(heading).toContainText('Test Complete!');
+    
+    const subheading = page.locator('[data-testid="results-modal"] p').first();
+    await expect(subheading).toContainText('Solid run');
+  });
+});
 ```
+
+**Why each test exists:**
+
+| Test | Purpose |
+|------|---------|
+| Baseline test | Verifies first-time user experience |
+| New best test | Verifies achievement recognition works |
+| Normal test | Verifies default state works correctly |
+
+### 5.3 Overlay Behavior Tests
+
+**File**: `e2e/tests/overlay-behavior.spec.ts`
+
+```typescript
+import { test, expect } from '@playwright/test';
+
+test.describe('Start Overlay Behavior', () => {
+  test('Overlay should appear on first visit', async ({ page }) => {
+    // Clear session storage to simulate first visit
+    await page.goto('/');
+    await page.evaluate(() => sessionStorage.clear());
+    await page.reload();
+    
+    // Wait for page to load
+    await page.waitForSelector('[data-testid="passage-text"]');
+    
+    // Overlay should be visible
+    const overlay = page.locator('[data-testid="start-overlay"]');
+    await expect(overlay).toBeVisible();
+    
+    // Button should be present
+    const startButton = page.locator('button:has-text("Start typing test")');
+    await expect(startButton).toBeVisible();
+  });
+
+  test('Overlay should have blur effect', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => sessionStorage.clear());
+    await page.reload();
+    
+    await page.waitForSelector('[data-testid="start-overlay"]');
+    
+    // Check that backdrop-blur class is applied
+    const overlay = page.locator('[data-testid="start-overlay"]');
+    const hasBlur = await overlay.evaluate((el) => {
+      const styles = window.getComputedStyle(el);
+      return styles.backdropFilter.includes('blur') || 
+             el.classList.contains('backdrop-blur-sm');
+    });
+    
+    expect(hasBlur).toBe(true);
+  });
+
+  test('Overlay should disappear after clicking Start button', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => sessionStorage.clear());
+    await page.reload();
+    
+    await page.waitForSelector('[data-testid="start-overlay"]');
+    
+    // Click the start button
+    await page.click('button:has-text("Start typing test")');
+    
+    // Overlay should disappear
+    const overlay = page.locator('[data-testid="start-overlay"]');
+    await expect(overlay).not.toBeVisible();
+  });
+
+  test('Overlay should disappear when user starts typing', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => sessionStorage.clear());
+    await page.reload();
+    
+    await page.waitForSelector('[data-testid="start-overlay"]');
+    
+    // Focus input and type
+    const input = page.locator('input[aria-label="Typing input"]');
+    await input.focus();
+    await input.type('a'); // Type single character
+    
+    // Overlay should disappear
+    const overlay = page.locator('[data-testid="start-overlay"]');
+    await expect(overlay).not.toBeVisible();
+  });
+
+  test('Overlay should NOT reappear after retry', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => sessionStorage.clear());
+    await page.reload();
+    
+    // Start the test (dismiss overlay)
+    await page.waitForSelector('[data-testid="start-overlay"]');
+    await page.click('button:has-text("Start typing test")');
+    
+    // Complete a test
+    const passageText = await page.textContent('[data-testid="passage-text"]');
+    const input = page.locator('input[aria-label="Typing input"]');
+    await input.fill(passageText || '');
+    
+    // Click Try Again
+    await page.waitForSelector('[data-testid="results-modal"]');
+    await page.click('button:has-text("Try Again")');
+    
+    // Overlay should NOT be visible
+    const overlay = page.locator('[data-testid="start-overlay"]');
+    await expect(overlay).not.toBeVisible();
+  });
+
+  test('Overlay should NOT reappear after selecting new passage', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => sessionStorage.clear());
+    await page.reload();
+    
+    // Start the test
+    await page.waitForSelector('[data-testid="start-overlay"]');
+    await page.click('button:has-text("Start typing test")');
+    
+    // Complete a test
+    const passageText = await page.textContent('[data-testid="passage-text"]');
+    const input = page.locator('input[aria-label="Typing input"]');
+    await input.fill(passageText || '');
+    
+    // Click New Passage
+    await page.waitForSelector('[data-testid="results-modal"]');
+    await page.click('button:has-text("New Passage")');
+    
+    // Overlay should NOT be visible
+    const overlay = page.locator('[data-testid="start-overlay"]');
+    await expect(overlay).not.toBeVisible();
+  });
+
+  test('Overlay SHOULD reappear in new browser context (simulating new session)', async ({ browser }) => {
+    // First context - dismiss the overlay
+    const context1 = await browser.newContext();
+    const page1 = await context1.newPage();
+    await page1.goto('http://localhost:3000');
+    await page1.waitForSelector('[data-testid="start-overlay"]');
+    await page1.click('button:has-text("Start typing test")');
+    await context1.close();
+    
+    // Second context - overlay should appear (new session)
+    const context2 = await browser.newContext();
+    const page2 = await context2.newPage();
+    await page2.goto('http://localhost:3000');
+    
+    // Overlay should be visible in new context
+    const overlay = page2.locator('[data-testid="start-overlay"]');
+    await expect(overlay).toBeVisible();
+    
+    await context2.close();
+  });
+
+  test('Overlay blur should cover entire passage area without cropping', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => sessionStorage.clear());
+    await page.reload();
+    
+    await page.waitForSelector('[data-testid="start-overlay"]');
+    
+    const overlay = page.locator('[data-testid="start-overlay"]');
+    const passage = page.locator('[data-testid="passage-text"]');
+    
+    // Get bounding boxes
+    const overlayBox = await overlay.boundingBox();
+    const passageBox = await passage.boundingBox();
+    
+    expect(overlayBox).not.toBeNull();
+    expect(passageBox).not.toBeNull();
+    
+    if (overlayBox && passageBox) {
+      // Overlay should fully cover passage
+      expect(overlayBox.x).toBeLessThanOrEqual(passageBox.x);
+      expect(overlayBox.y).toBeLessThanOrEqual(passageBox.y);
+      expect(overlayBox.x + overlayBox.width).toBeGreaterThanOrEqual(
+        passageBox.x + passageBox.width
+      );
+      expect(overlayBox.y + overlayBox.height).toBeGreaterThanOrEqual(
+        passageBox.y + passageBox.height
+      );
+    }
+  });
+});
+```
+
+**Why each test exists:**
+
+| Test | Purpose |
+|------|---------|
+| First visit test | Verifies onboarding experience |
+| Blur effect test | Verifies visual styling is applied |
+| Start button test | Verifies button dismissal works |
+| Typing dismissal test | Verifies auto-start behavior |
+| Retry persistence test | Verifies session storage works |
+| New passage persistence test | Verifies session storage works |
+| New session reset test | Verifies session scope is correct |
+| Blur coverage test | Verifies no visual cropping |
+
+### 5.4 Keyboard Shortcut Tests
+
+**File**: `e2e/tests/keyboard-shortcuts.spec.ts`
+
+```typescript
+import { test, expect } from '@playwright/test';
+
+test.describe('Keyboard Shortcuts', () => {
+  test.describe('During Typing Test', () => {
+    test('Ctrl+R should reset the current test', async ({ page }) => {
+      await page.goto('/');
+      await page.waitForSelector('[data-testid="passage-text"]');
+      
+      // Start typing
+      const input = page.locator('input[aria-label="Typing input"]');
+      await input.focus();
+      await input.type('Some test text');
+      
+      // Verify text was entered
+      await expect(input).not.toHaveValue('');
+      
+      // Press Ctrl+R
+      await page.keyboard.press('Control+r');
+      
+      // Input should be cleared (test reset)
+      await expect(input).toHaveValue('');
+    });
+
+    test('Ctrl+N should load a new passage', async ({ page }) => {
+      await page.goto('/');
+      await page.waitForSelector('[data-testid="passage-text"]');
+      
+      // Get current passage
+      const originalPassage = await page.textContent('[data-testid="passage-text"]');
+      
+      // Press Ctrl+N multiple times (to increase chance of different passage)
+      await page.keyboard.press('Control+n');
+      await page.waitForTimeout(500); // Wait for fetch
+      
+      // Input should be cleared
+      const input = page.locator('input[aria-label="Typing input"]');
+      await expect(input).toHaveValue('');
+    });
+
+    test('Ctrl+C should cancel running test', async ({ page }) => {
+      await page.goto('/');
+      await page.waitForSelector('[data-testid="passage-text"]');
+      
+      // Start typing (begins the test)
+      const input = page.locator('input[aria-label="Typing input"]');
+      await input.focus();
+      await input.type('Test');
+      
+      // Press Ctrl+C to cancel
+      await page.keyboard.press('Control+c');
+      
+      // Test should be reset
+      await expect(input).toHaveValue('');
+    });
+  });
+
+  test.describe('In Results Modal', () => {
+    async function completeTest(page: Page) {
+      await page.goto('/');
+      await page.waitForSelector('[data-testid="passage-text"]');
+      const passageText = await page.textContent('[data-testid="passage-text"]');
+      const input = page.locator('input[aria-label="Typing input"]');
+      await input.focus();
+      await input.fill(passageText || '');
+      await page.waitForSelector('[data-testid="results-modal"]');
+    }
+
+    test('Ctrl+R in modal should close modal and reset test', async ({ page }) => {
+      await completeTest(page);
+      
+      const modal = page.locator('[data-testid="results-modal"]');
+      await expect(modal).toBeVisible();
+      
+      // Press Ctrl+R
+      await page.keyboard.press('Control+r');
+      
+      // Modal should close
+      await expect(modal).not.toBeVisible();
+      
+      // Test should be reset
+      const input = page.locator('input[aria-label="Typing input"]');
+      await expect(input).toHaveValue('');
+    });
+
+    test('Ctrl+N in modal should close modal and load new passage', async ({ page }) => {
+      await completeTest(page);
+      
+      const modal = page.locator('[data-testid="results-modal"]');
+      await expect(modal).toBeVisible();
+      
+      // Press Ctrl+N
+      await page.keyboard.press('Control+n');
+      
+      // Modal should close
+      await expect(modal).not.toBeVisible();
+      
+      // Test should be ready with cleared input
+      const input = page.locator('input[aria-label="Typing input"]');
+      await expect(input).toHaveValue('');
+    });
+
+    test('Enter key should NOT close modal', async ({ page }) => {
+      await completeTest(page);
+      
+      const modal = page.locator('[data-testid="results-modal"]');
+      await expect(modal).toBeVisible();
+      
+      // Press Enter
+      await page.keyboard.press('Enter');
+      
+      // Modal should still be visible
+      await expect(modal).toBeVisible();
+    });
+  });
+
+  test.describe('Keyboard Shortcut Display', () => {
+    test('Modal should display keyboard shortcut hints', async ({ page }) => {
+      await page.goto('/');
+      await page.waitForSelector('[data-testid="passage-text"]');
+      
+      // Complete test
+      const passageText = await page.textContent('[data-testid="passage-text"]');
+      const input = page.locator('input[aria-label="Typing input"]');
+      await input.fill(passageText || '');
+      
+      await page.waitForSelector('[data-testid="results-modal"]');
+      
+      // Check for keyboard shortcut hints
+      const ctrlRHint = page.locator('kbd:has-text("Ctrl+R")');
+      const ctrlNHint = page.locator('kbd:has-text("Ctrl+N")');
+      
+      await expect(ctrlRHint).toBeVisible();
+      await expect(ctrlNHint).toBeVisible();
+    });
+  });
+});
+```
+
+**Why each test exists:**
+
+| Test | Purpose |
+|------|---------|
+| Ctrl+R reset test | Verifies reset shortcut during typing |
+| Ctrl+N new passage test | Verifies passage change shortcut |
+| Ctrl+C cancel test | Verifies test cancellation works |
+| Ctrl+R in modal test | Verifies shortcut works in modal |
+| Ctrl+N in modal test | Verifies shortcut works in modal |
+| Enter in modal test | Verifies Enter doesn't accidentally close |
+| Shortcut hints test | Verifies UI shows available shortcuts |
+
+---
+
+## Appendix A: Required Test IDs
+
+For the Playwright tests to work, the following `data-testid` attributes must be added to components:
+
+| Component | Test ID | Element |
+|-----------|---------|---------|
+| PassageDisplay | `passage-text` | Container with passage text |
+| ResultsModal | `results-modal` | Modal container |
+| ResultsModal | `modal-backdrop` | Backdrop element |
+| StartOverlay | `start-overlay` | Overlay container |
+
+**Note**: These test IDs would need to be added to the actual components when implementing the tests.
+
+---
+
+## Appendix B: Assumptions Made
+
+1. **Statistics Storage**: Assumed that `UserStatistics` is stored in `localStorage` with key `typingTestStatistics` (based on common patterns; actual implementation may vary)
+
+2. **Test Completion Detection**: Assumed that completing all characters triggers the modal (based on code in `GameContext.tsx` line 257-269)
+
+3. **Passage API**: Assumed passages are fetched from `/api/passages/action` endpoint (based on `fetchNewPassage` in `GameContext.tsx`)
+
+4. **Timer Behavior**: Assumed timed mode uses 60-second duration (based on `GameContext.tsx` line 98)
+
+5. **Modal Animation**: Assumed GSAP animations complete within reasonable timeframes for test assertions
+
+---
+
+## Appendix C: Test Data-TestId Implementation Guide
+
+When implementing the actual changes, add these attributes:
+
+```tsx
+// PassageDisplay.tsx
+<div data-testid="passage-text">...</div>
+
+// ResultsModel.tsx
+<div data-testid="results-modal" ref={modalRef}>...</div>
+<div data-testid="modal-backdrop" ref={backdropRef}>...</div>
+
+// StartOverlay.tsx  
+<div data-testid="start-overlay" ref={overlayRef}>...</div>
+```
+
+This ensures Playwright tests can reliably locate elements regardless of CSS class changes.
